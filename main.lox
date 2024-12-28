@@ -1,0 +1,30 @@
+
+
+
+
+// this is a comment
+(( )) {} // grouping stuff
+!*+-/=<> <= == // operators
+" hello this is a string" "is this one too?"
+
+4
+
+1234
+
+12.34
+
+
+x * 3 / y + jkl * z * q / 3.002
+
+
+0.34
+
+//.1234
+
+
+--445
+
+//fun main( args ) {
+//  print "Hello"
+//  return -15
+//}
