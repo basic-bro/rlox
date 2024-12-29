@@ -33,57 +33,27 @@ impl<'src> Parser<'src> {
 
   pub fn parse( &mut self ) {
     while !self.is_at_end() {
-      let e = self.expression();
+      let e = self.parse_expression();
       println!( "{:#}", e );
       self.exprs.push(e);
     }
   }
+  
 
   ////////////////////////////
   // private implementation //
   ////////////////////////////
   
-  fn expression( &mut self ) -> Box<Expr<'src>> {
-    self.equality()
+  fn parse_expression( &mut self ) -> Box<Expr<'src>> {
+    self.parse_equality()
   }
 
-  fn equality( &mut self ) -> Box<Expr<'src>> {
-    let mut expr = self.comparison();
+  fn parse_equality( &mut self ) -> Box<Expr<'src>> {
+    let mut expr = self.parse_comparison();
     loop {
-      let tt = *self.peek().get_token_type();
-      if tt == TokenType::BangEqual || tt == TokenType::EqualEqual {
+       if self.is_equality() {
         let operator = *self.pop();
-        let right = self.comparison();
-        expr = Box::new( Expr::Binary( expr, operator, right ) );
-      } else {
-        break;
-      }
-    }
-    return expr;
-  }
-  
-  fn comparison( &mut self ) -> Box<Expr<'src>> {
-    let mut expr = self.term();
-    loop {
-      let tt = *self.peek().get_token_type();
-      if tt == TokenType::Greater || tt == TokenType::GreaterEqual || tt == TokenType::Less || tt == TokenType::LessEqual {
-        let operator = *self.pop();
-        let right = self.term();
-        expr = Box::new( Expr::Binary( expr, operator, right ) );
-      } else {
-        break;
-      }
-    }
-    return expr;
-  }
-  
-  fn term( &mut self ) -> Box<Expr<'src>> {
-    let mut expr = self.factor();
-    loop {
-      let tt = *self.peek().get_token_type();
-      if tt == TokenType::Minus || tt == TokenType::Plus {
-        let operator = *self.pop();
-        let right = self.factor();
+        let right = self.parse_comparison();
         expr = Box::new( Expr::Binary( expr, operator, right ) );
       } else {
         break;
@@ -92,13 +62,12 @@ impl<'src> Parser<'src> {
     return expr;
   }
 
-  fn factor( &mut self ) -> Box<Expr<'src>> {
-    let mut expr = self.unary();
+  fn parse_comparison( &mut self ) -> Box<Expr<'src>> {
+    let mut expr = self.parse_term();
     loop {
-      let tt = *self.peek().get_token_type();
-      if tt == TokenType::Slash || tt == TokenType::Star {
+      if self.is_comparison() {
         let operator = *self.pop();
-        let right = self.unary();
+        let right = self.parse_term();
         expr = Box::new( Expr::Binary( expr, operator, right ) );
       } else {
         break;
@@ -107,16 +76,98 @@ impl<'src> Parser<'src> {
     return expr;
   }
   
-  fn unary( &mut self ) -> Box<Expr<'src>> {
+  fn parse_term( &mut self ) -> Box<Expr<'src>> {
+    let mut expr = self.parse_factor();
+    loop {
+      if self.is_term() {
+        let operator = *self.pop();
+        let right = self.parse_factor();
+        expr = Box::new( Expr::Binary( expr, operator, right ) );
+      } else {
+        break;
+      }
+    }
+    return expr;
+  }
+
+  fn parse_factor( &mut self ) -> Box<Expr<'src>> {
+    let mut expr = self.parse_unary();
+    loop {
+      if self.is_factor()  {
+        let operator = *self.pop();
+        let right = self.parse_unary();
+        expr = Box::new( Expr::Binary( expr, operator, right ) );
+      } else {
+        break;
+      }
+    }
+    return expr;
+  }
+  
+  fn parse_unary( &mut self ) -> Box<Expr<'src>> {
+    if self.is_unary() {
+        Box::new( Expr::Unary( *self.pop(), self.parse_unary() ) )
+    } else {
+      self.parse_primary()
+    }
+  }
+
+  fn parse_primary( &mut self ) -> Box<Expr<'src>> {
+    if self.is_primary() {
+      Box::new( Expr::Literal( *self.pop() ) )
+    } else {
+      panic!( "Expected a primary expression but found '{:?}'", *self.pop() )
+    }
+  }
+
+  fn is_equality( &self ) -> bool {
+    match self.peek().get_token_type() {
+      TokenType::BangEqual
+      | TokenType::EqualEqual
+        => true,
+      _ => false
+    }
+  }
+
+  fn is_comparison( &self ) -> bool {
+    match self.peek().get_token_type() {
+      TokenType::Greater
+      | TokenType::GreaterEqual
+      | TokenType::Less
+      | TokenType::LessEqual
+        => true,
+      _ => false
+    }
+  }
+
+  fn is_term( &self ) -> bool {
+    match self.peek().get_token_type() {
+      TokenType::Minus
+      | TokenType::Plus
+        => true,
+      _ => false
+    }
+  }
+
+  fn is_factor( &self ) -> bool {
+    match self.peek().get_token_type() {
+      TokenType::Slash
+      | TokenType::Star
+        => true,
+      _ => false
+    }
+  }
+
+  fn is_unary( &self ) -> bool {
     match self.peek().get_token_type() {
       TokenType::Bang
-        | TokenType::Minus
-        => Box::new( Expr::Unary( *self.pop(), self.unary() ) ),
-      _ => self.primary()
+        | TokenType::Minus    
+        => true,
+      _ => false
     }
   }
 
-  fn primary( &mut self ) -> Box<Expr<'src>> {
+  fn is_primary( &self ) -> bool {
     match self.peek().get_token_type() {
       TokenType::False
         | TokenType::True
@@ -124,8 +175,8 @@ impl<'src> Parser<'src> {
         | TokenType::Number( _ )
         | TokenType::String( _ )
         | TokenType::Identifer( _ )
-        => Box::new( Expr::Literal( *self.pop() ) ),
-      _ => panic!( "Expected a primary expression but found '{:?}'", *self.pop() )
+        => true,
+      _ => false
     }
   }
 
