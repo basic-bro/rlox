@@ -1,0 +1,1 @@
+I'm going through [Crafting Interpreters](https://craftinginterpreters.com/) by [Robert Nystrom](https://journal.stuffwithstuff.com/), implementing a Lox interpreter in Rust. Following the author's naming convention, the project is called `rlox`.
