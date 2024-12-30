@@ -21,6 +21,16 @@ pub struct Parser<'src> {
   current: usize
 }
 
+type ParseResult<'src> = Result<Box<Expr<'src>>, String>;
+
+#[derive(Debug)]
+enum Eval {
+  Number( f64 ),
+  StringLiteral( String )
+}
+  
+type EvalResult = Result<Eval, String>;
+
 impl<'src> Parser<'src> {
 
   pub fn new( tokens: Vec<Token<'src>> ) -> Parser<'src> {
@@ -34,8 +44,17 @@ impl<'src> Parser<'src> {
   pub fn parse( &mut self ) {
     while !self.is_at_end() {
       let e = self.parse_expression();
-      println!( "{:#}", e );
-      self.exprs.push(e);
+      match e {
+        Ok( expr ) => {
+          println!( "{:#}", expr );
+          println!( "\t{:?}", self.eval( &expr ) );
+          //self.exprs.push( e );
+        },
+        Err( msg ) => {
+          eprintln!( "{}", msg );
+          break;
+        }
+      }
     }
   }
   
@@ -43,80 +62,151 @@ impl<'src> Parser<'src> {
   ////////////////////////////
   // private implementation //
   ////////////////////////////
+
+  fn eval( &self, expr: &Expr<'src>  ) -> EvalResult {
+      match expr {
+        Expr::Literal( t ) => self.eval_literal( t ),
+        Expr::Grouping( expr ) => self.eval_grouping( expr ),
+        Expr::Binary( left, op, right ) => self.eval_binary( left, op, right ),
+        Expr::Unary( op, expr ) => self.eval_unary( op, expr )
+      }
+    }
   
-  fn parse_expression( &mut self ) -> Box<Expr<'src>> {
+  fn eval_binary( &self, left: &Expr<'src>, op: &Token<'src>, right: &Expr<'src> ) -> EvalResult {
+    let left_eval = self.eval( left )?;
+    let right_eval = self.eval( right )?;
+    match ( &left_eval, &right_eval ) {
+      ( Eval::Number( x ), Eval::Number( y ) )
+        =>  match op.get_token_type() {
+              TokenType::Plus => Ok( Eval::Number( x + y ) ),
+              TokenType::Minus => Ok( Eval::Number( x - y ) ),
+              TokenType::Star => Ok( Eval::Number( x * y ) ),
+              TokenType::Slash => Ok( Eval::Number( x / y ) ),
+              _ => Err( format!( "Unknown binary operation on numbers: '{}'", op.get_lexeme() ) )
+            },
+      ( Eval::StringLiteral( x ), Eval::StringLiteral( y ) )
+        =>  match op.get_token_type() {
+              TokenType::Plus => Ok( Eval::StringLiteral( x.to_owned() + y ) ),
+              _ => Err( format!( "Unknown binary operation on strings: '{}'", op.get_lexeme() ) )
+            },
+      _ => Err( format!( "Unknown or unsupported binary operation '{}' on values {:?} and {:?}", op.get_lexeme(), left_eval, right_eval ) )
+    }
+  }
+
+  fn eval_literal( &self, literal: &Token<'src> ) -> EvalResult {
+    match literal.get_token_type() {
+      TokenType::String( s ) => Ok( Eval::StringLiteral( s.to_string() ) ),
+      TokenType::Number( s ) => Ok( Eval::Number( s.parse::<f64>().unwrap() ) ),
+      TokenType::Identifer( _ ) => Err( format!( "eval() not implemented yet: {:?}", literal ) ),
+      _ => Err( format!( "Internal error: this token should not be parsed as an Expr::Literal: {:?}", literal ) )
+    }
+  }
+
+  fn eval_grouping( &self, inner: &Expr<'src> ) -> EvalResult {
+    self.eval( inner )
+  }
+
+  fn eval_unary( &self, op: &Token<'src>, expr: &Expr<'src> ) -> EvalResult {
+    let expr_eval = self.eval( expr )?;
+    match &expr_eval {
+      Eval::Number( x )
+        => if *op.get_token_type() == TokenType::Minus {
+          Ok( Eval::Number( -x ) )
+        } else {
+          Err( format!( "Unknown unary operation on a number: '{}'", op.get_lexeme() ) )
+        },
+      _ => Err( format!( "Unary operator '{}' not implemented for {:?}", op.get_lexeme(), &expr_eval ) )
+    }
+  }
+  
+  fn parse_expression( &mut self ) -> ParseResult<'src> {
     self.parse_equality()
   }
 
-  fn parse_equality( &mut self ) -> Box<Expr<'src>> {
-    let mut expr = self.parse_comparison();
+  fn parse_equality( &mut self ) -> ParseResult<'src> {
+    let mut expr = self.parse_comparison()?;
     loop {
        if self.is_equality() {
         let operator = *self.pop();
-        let right = self.parse_comparison();
+        let right = self.parse_comparison()?;
         expr = Box::new( Expr::Binary( expr, operator, right ) );
       } else {
         break;
       }
     }
-    return expr;
+    Ok( expr )
   }
 
-  fn parse_comparison( &mut self ) -> Box<Expr<'src>> {
-    let mut expr = self.parse_term();
+  fn parse_comparison( &mut self ) -> ParseResult<'src> {
+    let mut expr = self.parse_term()?;
     loop {
       if self.is_comparison() {
         let operator = *self.pop();
-        let right = self.parse_term();
+        let right = self.parse_term()?;
         expr = Box::new( Expr::Binary( expr, operator, right ) );
       } else {
         break;
       }
     }
-    return expr;
+    return Ok( expr );
   }
   
-  fn parse_term( &mut self ) -> Box<Expr<'src>> {
-    let mut expr = self.parse_factor();
+  fn parse_term( &mut self ) -> ParseResult<'src> {
+    let mut expr = self.parse_factor()?;
     loop {
       if self.is_term() {
         let operator = *self.pop();
-        let right = self.parse_factor();
+        let right = self.parse_factor()?;
         expr = Box::new( Expr::Binary( expr, operator, right ) );
       } else {
         break;
       }
     }
-    return expr;
+    return Ok( expr );
   }
 
-  fn parse_factor( &mut self ) -> Box<Expr<'src>> {
-    let mut expr = self.parse_unary();
+  fn parse_factor( &mut self ) -> ParseResult<'src> {
+    let mut expr = self.parse_unary()?;
     loop {
       if self.is_factor()  {
         let operator = *self.pop();
-        let right = self.parse_unary();
+        let right = self.parse_unary()?;
         expr = Box::new( Expr::Binary( expr, operator, right ) );
       } else {
         break;
       }
     }
-    return expr;
+    return Ok( expr );
   }
   
-  fn parse_unary( &mut self ) -> Box<Expr<'src>> {
+  fn parse_unary( &mut self ) -> ParseResult<'src> {
     if self.is_unary() {
-        Box::new( Expr::Unary( *self.pop(), self.parse_unary() ) )
+        Ok( Box::new( Expr::Unary( *self.pop(), self.parse_unary()? ) ) )
+    } else {
+      self.parse_grouping()
+    }
+  }
+
+  fn parse_grouping( &mut self ) -> ParseResult<'src> {
+    if self.is_grouping() {
+      self.pop();
+      let expr = Box::new( Expr::Grouping( self.parse_expression()? ) );
+      if *self.peek().get_token_type() != TokenType::RightParen {
+        Err( format!( "Expected ')' but found '{:?}'", *self.peek() ) )
+      } else {
+        self.pop();
+        Ok( expr )
+      }
     } else {
       self.parse_primary()
     }
   }
 
-  fn parse_primary( &mut self ) -> Box<Expr<'src>> {
+  fn parse_primary( &mut self ) -> ParseResult<'src> {
     if self.is_primary() {
-      Box::new( Expr::Literal( *self.pop() ) )
+      Ok( Box::new( Expr::Literal( *self.pop() ) ) )
     } else {
-      panic!( "Expected a primary expression but found '{:?}'", *self.pop() )
+      Err( format!( "Expected a primary expression but found '{:?}'", *self.peek() ) )
     }
   }
 
@@ -167,6 +257,10 @@ impl<'src> Parser<'src> {
     }
   }
 
+  fn is_grouping( &self ) -> bool {
+    *self.peek().get_token_type() == TokenType::LeftParen
+  }
+
   fn is_primary( &self ) -> bool {
     match self.peek().get_token_type() {
       TokenType::False
@@ -174,7 +268,7 @@ impl<'src> Parser<'src> {
         | TokenType::Nil
         | TokenType::Number( _ )
         | TokenType::String( _ )
-        | TokenType::Identifer( _ )
+        //| TokenType::Identifer( _ )
         => true,
       _ => false
     }

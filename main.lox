@@ -3,8 +3,8 @@
 
 
 // this is a comment
-(( )) {} // grouping stuff
-!*+-/=<> <= == // operators
+//(( -3 )) {} // grouping stuff
+//!*+-/=<> <= == // operators
 " hello this is a string" "is this one too?"
 
 4
@@ -14,16 +14,15 @@
 12.34
 
 
-x * 3 / y + jkl * z * q / 3.002
+-14.2 * 3 / (17.03 + 300.2 * -43.2066 ) * -0.33333338 / 3.002
 
 
-0.34
+--0.34
 
 //.1234
 
 
---445
-
++ 445
 //fun main( args ) {
 //  print "Hello"
 //  return -15

@@ -8,7 +8,7 @@
 /////////
 
 use crate::util::*;
-use crate::interpreter::error;
+use crate::interpreter::*;
 use crate::interpreter::token::*;
 
 
@@ -104,7 +104,7 @@ impl<'a> Scanner<'a> {
                  } else if is_alpha( c ) {
                    self.identifer();
                  } else {
-                   error( self.line, String::from( format!( "Unexpected character: '{}'", c ) ) )
+                   Self::error( self.line, String::from( format!( "Unexpected character: '{}'", c ) ) )
                  }          
     }
   }
@@ -123,7 +123,7 @@ impl<'a> Scanner<'a> {
     }
 
     if self.is_at_end() {
-      error( self.line, String::from( "Unterminated string." ) );
+      Self::error( self.line, String::from( "Unterminated string." ) );
       return;
     }
 
@@ -145,7 +145,7 @@ impl<'a> Scanner<'a> {
       }
     }
 
-    let value = substring( &self.src, self.start, self.current - self.start ).unwrap(); //.parse::<f64>().unwrap();
+    let value = substring( &self.src, self.start, self.current - self.start ).unwrap();
     self.add_token( TokenType::Number( value ) );
   }
 
@@ -207,4 +207,14 @@ impl<'a> Scanner<'a> {
   fn is_at_end( &self ) -> bool {
     self.current >= self.src.len()
   }
+
+  fn report( line: i32, where_: String, message: String ) {
+    eprintln!( "[line {}] Error{}: {}", line, where_, message );
+  }
+
+  fn error( line: i32, message: String ) {
+    Self::report( line, "".to_string(), message );
+  }
+  
+  
 }
