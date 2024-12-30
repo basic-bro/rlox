@@ -9,6 +9,7 @@
 
 use crate::interpreter::token::*;
 use crate::interpreter::expr::*;
+use crate::interpreter::evaluator::*;
 
 
 //////////////////////
@@ -23,14 +24,6 @@ pub struct Parser<'src> {
 
 type ParseResult<'src> = Result<Box<Expr<'src>>, String>;
 
-#[derive(Debug)]
-enum Eval {
-  Number( f64 ),
-  StringLiteral( String )
-}
-  
-type EvalResult = Result<Eval, String>;
-
 impl<'src> Parser<'src> {
 
   pub fn new( tokens: Vec<Token<'src>> ) -> Parser<'src> {
@@ -38,7 +31,7 @@ impl<'src> Parser<'src> {
       tokens,
       exprs: vec![],
       current: 0
-    }
+    }  
   }
 
   pub fn parse( &mut self ) {
@@ -47,6 +40,7 @@ impl<'src> Parser<'src> {
       match e {
         Ok( expr ) => {
           println!( "{:#}", expr );
+          //println!( "\t{:?}", self.eval( &expr ) );
           println!( "\t{:?}", self.eval( &expr ) );
           //self.exprs.push( e );
         },
@@ -64,61 +58,9 @@ impl<'src> Parser<'src> {
   ////////////////////////////
 
   fn eval( &self, expr: &Expr<'src>  ) -> EvalResult {
-      match expr {
-        Expr::Literal( t ) => self.eval_literal( t ),
-        Expr::Grouping( expr ) => self.eval_grouping( expr ),
-        Expr::Binary( left, op, right ) => self.eval_binary( left, op, right ),
-        Expr::Unary( op, expr ) => self.eval_unary( op, expr )
-      }
-    }
-  
-  fn eval_binary( &self, left: &Expr<'src>, op: &Token<'src>, right: &Expr<'src> ) -> EvalResult {
-    let left_eval = self.eval( left )?;
-    let right_eval = self.eval( right )?;
-    match ( &left_eval, &right_eval ) {
-      ( Eval::Number( x ), Eval::Number( y ) )
-        =>  match op.get_token_type() {
-              TokenType::Plus => Ok( Eval::Number( x + y ) ),
-              TokenType::Minus => Ok( Eval::Number( x - y ) ),
-              TokenType::Star => Ok( Eval::Number( x * y ) ),
-              TokenType::Slash => Ok( Eval::Number( x / y ) ),
-              _ => Err( format!( "Unknown binary operation on numbers: '{}'", op.get_lexeme() ) )
-            },
-      ( Eval::StringLiteral( x ), Eval::StringLiteral( y ) )
-        =>  match op.get_token_type() {
-              TokenType::Plus => Ok( Eval::StringLiteral( x.to_owned() + y ) ),
-              _ => Err( format!( "Unknown binary operation on strings: '{}'", op.get_lexeme() ) )
-            },
-      _ => Err( format!( "Unknown or unsupported binary operation '{}' on values {:?} and {:?}", op.get_lexeme(), left_eval, right_eval ) )
-    }
+    expr.visit( &Evaluator{} )
   }
 
-  fn eval_literal( &self, literal: &Token<'src> ) -> EvalResult {
-    match literal.get_token_type() {
-      TokenType::String( s ) => Ok( Eval::StringLiteral( s.to_string() ) ),
-      TokenType::Number( s ) => Ok( Eval::Number( s.parse::<f64>().unwrap() ) ),
-      TokenType::Identifer( _ ) => Err( format!( "eval() not implemented yet: {:?}", literal ) ),
-      _ => Err( format!( "Internal error: this token should not be parsed as an Expr::Literal: {:?}", literal ) )
-    }
-  }
-
-  fn eval_grouping( &self, inner: &Expr<'src> ) -> EvalResult {
-    self.eval( inner )
-  }
-
-  fn eval_unary( &self, op: &Token<'src>, expr: &Expr<'src> ) -> EvalResult {
-    let expr_eval = self.eval( expr )?;
-    match &expr_eval {
-      Eval::Number( x )
-        => if *op.get_token_type() == TokenType::Minus {
-          Ok( Eval::Number( -x ) )
-        } else {
-          Err( format!( "Unknown unary operation on a number: '{}'", op.get_lexeme() ) )
-        },
-      _ => Err( format!( "Unary operator '{}' not implemented for {:?}", op.get_lexeme(), &expr_eval ) )
-    }
-  }
-  
   fn parse_expression( &mut self ) -> ParseResult<'src> {
     self.parse_equality()
   }

@@ -8,7 +8,6 @@
 /////////
 
 use crate::util::*;
-use crate::interpreter::*;
 use crate::interpreter::token::*;
 
 
@@ -215,6 +214,4 @@ impl<'a> Scanner<'a> {
   fn error( line: i32, message: String ) {
     Self::report( line, "".to_string(), message );
   }
-  
-  
 }

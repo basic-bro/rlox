@@ -24,6 +24,29 @@ pub enum Expr<'src> {
   Unary( Token<'src> /* operator */, Box<Expr<'src>> )
 }
 
+pub trait ExprVisitor<'src, T, E> {
+  fn visit_binary( left: T, op: &Token<'src>, right: T ) -> Result<T, E>;
+  fn visit_grouping( expr: T ) -> Result<T, E>;
+  fn visit_literal( literal: &Token<'src> ) -> Result<T, E>;
+  fn visit_unary( op: &Token<'src>, expr: T ) -> Result<T, E>;
+}
+
+impl<'src> Expr<'src> {
+  pub fn visit<T, E, V: ExprVisitor<'src, T, E>>( &self, visitor: &V ) -> Result<T, E>
+  {
+    match self {
+      Self::Binary( left, op , right )
+        => V::visit_binary( left.visit( visitor )?, op, right.visit( visitor )? ),
+      Self::Grouping( inner )
+        => V::visit_grouping( inner.visit( visitor )? ),
+      Self::Literal( literal )
+        => V::visit_literal( literal ),
+      Self::Unary( op, expr )
+        => V::visit_unary( op, expr.visit( visitor )? )
+    }
+  }
+}
+
 
 ////////////////////////////
 // private implementation //

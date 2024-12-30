@@ -11,6 +11,7 @@ mod token;
 mod scanner;
 mod expr;
 mod parser;
+mod evaluator;
 
 
 /////////
@@ -68,6 +69,11 @@ impl Interpreter {
     }
   }
 
+
+  ////////////////////////////
+  // private implementation //
+  ////////////////////////////
+
   fn error( &mut self, line: i32, message: String ) {
     self.report( line, "".to_string(), message );
   }
@@ -82,10 +88,7 @@ impl Interpreter {
     let tokens = scanner.scan_tokens().clone();
     let mut parser = Parser::new( tokens );
     parser.parse();
-    
   }
-
-
 }
 
 

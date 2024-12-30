@@ -65,7 +65,6 @@ impl<'a> TokenType<'a> {
       Self::While => "while"
     }
   }
-
 }
 
 #[derive(Debug, Clone, Copy)]
