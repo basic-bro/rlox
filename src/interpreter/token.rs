@@ -3,27 +3,33 @@
 /////////////////////////////////////////////
 
 
+/////////
+// use //
+/////////
+
+use crate::util::*;
+
 //////////////////////
 // public interface //
 //////////////////////
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub enum TokenType<'a> {
+pub enum TokenType {
   LeftParen, RightParen, LeftBrace, RightBrace,
   Comma, Dot, Minus, Plus, Semicolon, Slash, Star,
 
   Bang, BangEqual, Equal, EqualEqual,
   Greater, GreaterEqual, Less, LessEqual,
 
-  Identifer( &'a str ), String( &'a str ), Number( &'a str ),
+  Identifer( StoredString ), String( StoredString ), Number( StoredString ),
 
   And, Class, Else, False, Fun, For, If, Nil, Or,
   Print, Return, Super, This, True, Var, While
 }
 
-impl<'a> TokenType<'a> {
+impl TokenType {
 
-  pub fn get_lexeme( &self ) -> &str {
+  pub fn get_lexeme<'str>( &self, db: &'str StringManager ) -> &'str str {
     match self {
       Self::LeftParen => "(",
       Self::RightParen => ")",
@@ -44,9 +50,9 @@ impl<'a> TokenType<'a> {
       Self::GreaterEqual => ">=",
       Self::Less => "<",
       Self::LessEqual => "<=",
-      Self::Identifer( id ) => *id,
-      Self::String( s ) => *s,
-      Self::Number( f ) => *f,
+      Self::Identifer( id ) => db.gets( *id ),
+      Self::String( s ) => db.gets( *s ),
+      Self::Number( f ) => db.gets( *f ),
       Self::And => "and",
       Self::Class => "class",
       Self::Else => "else",
@@ -65,27 +71,30 @@ impl<'a> TokenType<'a> {
       Self::While => "while"
     }
   }
+
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct Token<'a> {
-  token_type: TokenType<'a>,
+pub struct Token {
+  token_type: TokenType,
   line: i32
 }
 
-impl<'a> Token<'a> {
-  pub fn new( token_type: TokenType<'a>, line: i32 ) -> Token<'a> {
+impl Token {
+
+  pub fn new( token_type: TokenType, line: i32 ) -> Token {
     Token {
       token_type,
       line
     }
   }
 
-  pub fn get_lexeme( &self ) -> &str {
-    self.token_type.get_lexeme()
+  pub fn get_lexeme<'str>( &self, db: &'str StringManager ) -> &'str str {
+    self.token_type.get_lexeme( db )
   }
 
-  pub fn get_token_type( &self ) -> &TokenType<'a> {
+  pub fn get_token_type( &self ) -> &TokenType {
     &self.token_type
   }
+  
 }

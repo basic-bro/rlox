@@ -11,23 +11,27 @@ use crate::interpreter::token::*;
 use crate::interpreter::expr::*;
 use crate::interpreter::evaluator::*;
 
+use super::StringManager;
+
 
 //////////////////////
 // public interface //
 //////////////////////
 
-pub struct Parser<'src> {
-  tokens: Vec<Token<'src>>,
-  exprs: Vec<Box<Expr<'src>>>,
+pub struct Parser<'str> {
+  db: &'str StringManager,
+  tokens: Vec<Token>,
+  exprs: Vec<Box<Expr>>,
   current: usize
 }
 
-type ParseResult<'src> = Result<Box<Expr<'src>>, String>;
+type ParseResult = Result<Box<Expr>, String>;
 
-impl<'src> Parser<'src> {
+impl<'str> Parser<'str> {
 
-  pub fn new( tokens: Vec<Token<'src>> ) -> Parser<'src> {
+  pub fn new( db: &'str StringManager, tokens: Vec<Token> ) -> Parser<'str> {
     Parser{
+      db,
       tokens,
       exprs: vec![],
       current: 0
@@ -39,7 +43,7 @@ impl<'src> Parser<'src> {
       let e = self.parse_expression();
       match e {
         Ok( expr ) => {
-          println!( "{:#}", expr );
+          println!( "{}", expr.to_string( self.db ) );
           //println!( "\t{:?}", self.eval( &expr ) );
           println!( "\t{:?}", self.eval( &expr ) );
           //self.exprs.push( e );
@@ -57,15 +61,15 @@ impl<'src> Parser<'src> {
   // private implementation //
   ////////////////////////////
 
-  fn eval( &self, expr: &Expr<'src>  ) -> EvalResult {
-    expr.visit( &Evaluator{} )
+  fn eval( &self, expr: &Expr  ) -> EvalResult {
+    expr.visit( &Evaluator::new( self.db ) )
   }
 
-  fn parse_expression( &mut self ) -> ParseResult<'src> {
+  fn parse_expression( &mut self ) -> ParseResult {
     self.parse_equality()
   }
 
-  fn parse_equality( &mut self ) -> ParseResult<'src> {
+  fn parse_equality( &mut self ) -> ParseResult {
     let mut expr = self.parse_comparison()?;
     loop {
        if self.is_equality() {
@@ -79,7 +83,7 @@ impl<'src> Parser<'src> {
     Ok( expr )
   }
 
-  fn parse_comparison( &mut self ) -> ParseResult<'src> {
+  fn parse_comparison( &mut self ) -> ParseResult {
     let mut expr = self.parse_term()?;
     loop {
       if self.is_comparison() {
@@ -93,7 +97,7 @@ impl<'src> Parser<'src> {
     return Ok( expr );
   }
   
-  fn parse_term( &mut self ) -> ParseResult<'src> {
+  fn parse_term( &mut self ) -> ParseResult {
     let mut expr = self.parse_factor()?;
     loop {
       if self.is_term() {
@@ -107,7 +111,7 @@ impl<'src> Parser<'src> {
     return Ok( expr );
   }
 
-  fn parse_factor( &mut self ) -> ParseResult<'src> {
+  fn parse_factor( &mut self ) -> ParseResult {
     let mut expr = self.parse_unary()?;
     loop {
       if self.is_factor()  {
@@ -121,7 +125,7 @@ impl<'src> Parser<'src> {
     return Ok( expr );
   }
   
-  fn parse_unary( &mut self ) -> ParseResult<'src> {
+  fn parse_unary( &mut self ) -> ParseResult {
     if self.is_unary() {
         Ok( Box::new( Expr::Unary( *self.pop(), self.parse_unary()? ) ) )
     } else {
@@ -129,7 +133,7 @@ impl<'src> Parser<'src> {
     }
   }
 
-  fn parse_grouping( &mut self ) -> ParseResult<'src> {
+  fn parse_grouping( &mut self ) -> ParseResult {
     if self.is_grouping() {
       self.pop();
       let expr = Box::new( Expr::Grouping( self.parse_expression()? ) );
@@ -144,7 +148,7 @@ impl<'src> Parser<'src> {
     }
   }
 
-  fn parse_primary( &mut self ) -> ParseResult<'src> {
+  fn parse_primary( &mut self ) -> ParseResult {
     if self.is_primary() {
       Ok( Box::new( Expr::Literal( *self.pop() ) ) )
     } else {
@@ -216,14 +220,14 @@ impl<'src> Parser<'src> {
     }
   }
 
-  fn pop( &mut self ) -> &Token<'src> {
+  fn pop( &mut self ) -> &Token {
     if !self.is_at_end() {
       self.current += 1;
     }
     self.previous()
   }
 
-  fn peek( &self ) -> &Token<'src> {
+  fn peek( &self ) -> &Token {
     if self.is_at_end() {
       self.previous()
     }
@@ -232,7 +236,7 @@ impl<'src> Parser<'src> {
     }
   }
 
-  fn previous( &self ) -> &Token<'src> {
+  fn previous( &self ) -> &Token {
     assert!( self.current > 0 && self.current - 1 < self.tokens.len() );
     self.tokens.get( self.current - 1 ).unwrap()
   }

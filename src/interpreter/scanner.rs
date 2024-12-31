@@ -15,15 +15,16 @@ use crate::interpreter::token::*;
 // public interface //
 //////////////////////
 
-pub struct Scanner<'a> {
-  src: &'a str,
-  tokens: Vec<Token<'a>>,
+pub struct Scanner<'str> {
+  db: &'str mut StringManager,
+  src: String,
+  tokens: Vec<Token>,
   start: usize,
   current: usize,
   line: i32
 }
 
-impl<'a> Scanner<'a> {
+impl<'str> Scanner<'str> {
 
   pub fn keyword( value: &str ) -> Option<TokenType> {
     match value {
@@ -47,9 +48,10 @@ impl<'a> Scanner<'a> {
     }
   }
 
-  pub fn new( src: &'a str ) -> Scanner<'a> {
+  pub fn new( db: &'str mut StringManager ) -> Scanner<'str> {
     Scanner {
-      src,
+      db,
+      src: "".to_string(),
       tokens: vec![],
       start: 0,
       current: 0,
@@ -57,18 +59,29 @@ impl<'a> Scanner<'a> {
     }
   }
 
-  pub fn scan_tokens( &mut self ) -> &Vec<Token> {
+  pub fn scan_tokens( &mut self, src: String ) -> Vec<Token> {
+    self.restart( src );
     while !self.is_at_end() {
       self.start = self.current;
       self.scan_token();
     }
-    &self.tokens
+    let tokens = self.tokens.clone();
+    self.tokens.clear();
+    tokens
   }
 
 
   ////////////////////////////
   // private implementation //
   ////////////////////////////
+   
+  fn restart( &mut self, src: String ) {
+    self.src = src;
+    self.tokens.clear();
+    self.start = 0;
+    self.current = 0;
+    self.line = 1;
+  }
 
   fn scan_token( &mut self ) {
     match self.advance() {
@@ -108,7 +121,7 @@ impl<'a> Scanner<'a> {
     }
   }
 
-  fn double_char_token( &mut self, second_char: char, double_token: TokenType<'a>, single_token: TokenType<'a> ) {
+  fn double_char_token( &mut self, second_char: char, double_token: TokenType, single_token: TokenType ) {
     let did_advance = self.advance_if( second_char );
     self.add_token( ifte( did_advance, double_token, single_token ) );
   }
@@ -129,7 +142,8 @@ impl<'a> Scanner<'a> {
     self.advance();
 
     let value = substring( &self.src, self.start + 1, self.current - self.start - 2 ).unwrap();
-    self.add_token( TokenType::String( value ) );
+    let stored_string = self.db.puts( value );
+    self.add_token( TokenType::String( stored_string ) );
   }
 
   fn number( &mut self ) {
@@ -145,7 +159,8 @@ impl<'a> Scanner<'a> {
     }
 
     let value = substring( &self.src, self.start, self.current - self.start ).unwrap();
-    self.add_token( TokenType::Number( value ) );
+    let stored_string = self.db.puts( value );
+    self.add_token( TokenType::Number( stored_string ) );
   }
 
   fn identifer( &mut self ) {
@@ -154,10 +169,11 @@ impl<'a> Scanner<'a> {
     }
 
     let value = substring( &self.src, self.start, self.current - self.start ).unwrap();
+    let stored_string = self.db.puts( value );
 
     match Scanner::keyword( value ) {
       Some( tt ) => self.add_token( tt ),
-      None => self.add_token( TokenType::Identifer( value ) ),
+      None => self.add_token( TokenType::Identifer( stored_string ) ),
     }
   }
 
@@ -178,7 +194,7 @@ impl<'a> Scanner<'a> {
     true
   }
 
-  fn add_token( &mut self, token_type: TokenType<'a> ) {
+  fn add_token( &mut self, token_type: TokenType ) {
     self.tokens.push(
       Token::new(
         token_type,
@@ -214,4 +230,5 @@ impl<'a> Scanner<'a> {
   fn error( line: i32, message: String ) {
     Self::report( line, "".to_string(), message );
   }
+  
 }

@@ -24,6 +24,7 @@ use std::{io, io::BufRead, io::Write};
 
 use crate::interpreter::scanner::*;
 use crate::interpreter::parser::*;
+use crate::util::*;
 
 
 //////////////////////
@@ -31,6 +32,7 @@ use crate::interpreter::parser::*;
 //////////////////////
 
 pub struct Interpreter {
+  str_lookup: StringManager,
   had_error: bool
 }
 
@@ -38,6 +40,7 @@ impl Interpreter {
 
   pub fn new() -> Interpreter {
     Interpreter {
+      str_lookup: StringManager::new(),
       had_error: false
     }
   }
@@ -83,12 +86,13 @@ impl Interpreter {
       self.had_error = true;
   }
   
-  fn run( &self, src: String ) {
-    let mut scanner = Scanner::new( &src );
-    let tokens = scanner.scan_tokens().clone();
-    let mut parser = Parser::new( tokens );
+  fn run( &mut self, src: String ) {
+    let mut scanner = Scanner::new( &mut self.str_lookup );
+    let tokens = scanner.scan_tokens( src );
+    let mut parser = Parser::new( &mut self.str_lookup, tokens );
     parser.parse();
   }
+  
 }
 
 
