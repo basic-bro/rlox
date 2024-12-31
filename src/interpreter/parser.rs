@@ -9,9 +9,10 @@
 
 use crate::interpreter::token::*;
 use crate::interpreter::expr::*;
-use crate::interpreter::evaluator::*;
+use crate::interpreter::stmt::*;
+use crate::interpreter::eval::*;
 
-use super::StringManager;
+use crate::util::StringManager;
 
 
 //////////////////////
@@ -21,11 +22,12 @@ use super::StringManager;
 pub struct Parser<'str> {
   db: &'str StringManager,
   tokens: Vec<Token>,
-  exprs: Vec<Box<Expr>>,
+  stmts: Vec<Box<Stmt>>,
   current: usize
 }
 
-type ParseResult = Result<Box<Expr>, String>;
+type ParseExprResult = Result<Box<Expr>, String>;
+type ParseStmtResult = Result<Box<Stmt>, String>;
 
 impl<'str> Parser<'str> {
 
@@ -33,20 +35,17 @@ impl<'str> Parser<'str> {
     Parser{
       db,
       tokens,
-      exprs: vec![],
+      stmts: vec![],
       current: 0
     }  
   }
 
   pub fn parse( &mut self ) {
     while !self.is_at_end() {
-      let e = self.parse_expression();
+      let e = self.parse_statement();
       match e {
-        Ok( expr ) => {
-          println!( "{}", expr.to_string( self.db ) );
-          //println!( "\t{:?}", self.eval( &expr ) );
-          println!( "\t{:?}", self.eval( &expr ) );
-          //self.exprs.push( e );
+        Ok( stmt ) => {
+          self.exec( &stmt );
         },
         Err( msg ) => {
           eprintln!( "{}", msg );
@@ -55,21 +54,118 @@ impl<'str> Parser<'str> {
       }
     }
   }
-  
+ 
 
   ////////////////////////////
   // private implementation //
   ////////////////////////////
 
-  fn eval( &self, expr: &Expr  ) -> EvalResult {
-    expr.visit( &Evaluator::new( self.db ) )
+  fn eval( &self, expr: &Expr ) -> EvalResult {
+    expr.visit( &ExprEvaluator::new( self.db ) )
   }
 
-  fn parse_expression( &mut self ) -> ParseResult {
-    self.parse_equality()
+  fn exec( &self, stmt: &Stmt ) {
+    match stmt {
+      Stmt::Expr( expr ) => {
+        match self.eval( expr ) {
+          Ok( eval ) => println!( "[ Interpreter: ignoring an expression statement which evaluated to '{}'. ]", eval ),
+          Err( msg ) => eprintln!( "[ Interpreter: error while evaluating an expression statement: {}", msg )
+        }
+      },
+      Stmt::Print( expr ) => {
+        match self.eval( expr ) {
+          Ok( eval ) => print!( "{}", eval ),
+          Err( msg ) => eprintln!( "[ Interpreter: error while evaluating a print statement: {}", msg )
+        }
+      }
+    }
   }
 
-  fn parse_equality( &mut self ) -> ParseResult {
+  // statement => print_statement | expr_statement
+  // print_statement => "print" expression ";"
+  // expr_statement => expression ";"
+  fn parse_statement( &mut self ) -> ParseStmtResult {
+    if *self.peek().get_token_type() == TokenType::Print {
+
+      // consume "print"
+      self.pop();
+
+      // expression
+      let result = self.parse_expression();
+      if result.is_err() {
+        return Err( result.err().unwrap() )
+      }
+      
+      // ";"
+      if *self.peek().get_token_type() != TokenType::Semicolon {
+        return Err( format!( "Expected ';' but found '{}'", self.peek().get_lexeme( self.db ) ) );
+      }
+      self.pop();
+
+      // success
+      Ok( Box::new( Stmt::Print( result.unwrap() ) ) )
+
+    } else {
+
+      // expression
+      let result = self.parse_expression();
+      if result.is_err() {
+        return Err( result.err().unwrap() )
+      }
+      
+      // ";"
+      if *self.peek().get_token_type() != TokenType::Semicolon {
+        return Err( format!( "Expected ';' but found '{}'", self.peek().get_lexeme( self.db ) ) );
+      }
+      self.pop();
+
+      // success
+      Ok( Box::new( Stmt::Expr( result.unwrap() ) ) )
+    }
+  }
+
+  // expression  => assignment
+  fn parse_expression( &mut self ) -> ParseExprResult {
+    self.parse_assignment()
+  }
+
+  // assignment  => ( IDENTIFIER "=" assignment ) | logical_or
+  fn parse_assignment( &mut self ) -> ParseExprResult {
+    self.parse_logical_or()
+  }
+
+  // logical_or  => logical_and ( "or" logical_and )*
+  fn parse_logical_or( &mut self ) -> ParseExprResult {
+    let mut expr = self.parse_logical_and()?;
+    loop {
+       if self.is_logical_or() {
+        let operator = *self.pop();
+        let right = self.parse_logical_and()?;
+        expr = Box::new( Expr::Binary( expr, operator, right ) );
+      } else {
+        break;
+      }
+    }
+    Ok( expr )
+  }
+
+  // logical_and => equality ( "and" equality )*
+  fn parse_logical_and( &mut self ) -> ParseExprResult {
+    let mut expr = self.parse_equality()?;
+    loop {
+       if self.is_logical_and() {
+        let operator = *self.pop();
+        let right = self.parse_equality()?;
+        expr = Box::new( Expr::Binary( expr, operator, right ) );
+      } else {
+        break;
+      }
+    }
+    Ok( expr )
+  }
+
+  // equality => comparison ( ( "==" | "!=" ) comparison )*
+  fn parse_equality( &mut self ) -> ParseExprResult {
     let mut expr = self.parse_comparison()?;
     loop {
        if self.is_equality() {
@@ -83,7 +179,8 @@ impl<'str> Parser<'str> {
     Ok( expr )
   }
 
-  fn parse_comparison( &mut self ) -> ParseResult {
+  // equality => term ( ( "<" | "<=" | ">" | ">=" ) term )*
+  fn parse_comparison( &mut self ) -> ParseExprResult {
     let mut expr = self.parse_term()?;
     loop {
       if self.is_comparison() {
@@ -97,7 +194,8 @@ impl<'str> Parser<'str> {
     return Ok( expr );
   }
   
-  fn parse_term( &mut self ) -> ParseResult {
+  // term => factor ( ( "+" | "-" ) factor )*
+  fn parse_term( &mut self ) -> ParseExprResult {
     let mut expr = self.parse_factor()?;
     loop {
       if self.is_term() {
@@ -111,7 +209,8 @@ impl<'str> Parser<'str> {
     return Ok( expr );
   }
 
-  fn parse_factor( &mut self ) -> ParseResult {
+  // factor => unary ( ( "*" | "/" ) unary )*
+  fn parse_factor( &mut self ) -> ParseExprResult {
     let mut expr = self.parse_unary()?;
     loop {
       if self.is_factor()  {
@@ -125,15 +224,17 @@ impl<'str> Parser<'str> {
     return Ok( expr );
   }
   
-  fn parse_unary( &mut self ) -> ParseResult {
+  // unary => ( ( "!" | "-" ) unary ) | grouping
+  fn parse_unary( &mut self ) -> ParseExprResult {
     if self.is_unary() {
         Ok( Box::new( Expr::Unary( *self.pop(), self.parse_unary()? ) ) )
     } else {
       self.parse_grouping()
     }
   }
-
-  fn parse_grouping( &mut self ) -> ParseResult {
+  
+  // grouping => ( "(" expression ")" ) | primary
+  fn parse_grouping( &mut self ) -> ParseExprResult {
     if self.is_grouping() {
       self.pop();
       let expr = Box::new( Expr::Grouping( self.parse_expression()? ) );
@@ -148,12 +249,21 @@ impl<'str> Parser<'str> {
     }
   }
 
-  fn parse_primary( &mut self ) -> ParseResult {
+  // primary => "true" | "false" | "nil" | NUMBER | STRING_LITERAL
+  fn parse_primary( &mut self ) -> ParseExprResult {
     if self.is_primary() {
       Ok( Box::new( Expr::Literal( *self.pop() ) ) )
     } else {
       Err( format!( "Expected a primary expression but found '{:?}'", *self.peek() ) )
     }
+  }
+
+  fn is_logical_or( &self ) -> bool {
+    *self.peek().get_token_type() == TokenType::Or
+  }
+
+  fn is_logical_and( &self ) -> bool {
+    *self.peek().get_token_type() == TokenType::And
   }
 
   fn is_equality( &self ) -> bool {

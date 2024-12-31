@@ -1,29 +1,11 @@
 
 
+print "Hello world! ";
 
+print "In Lox, when nil is cast to bool, the result is ";
 
-// this is a comment
-//(( -3 )) {} // grouping stuff
-//!*+-/=<> <= == // operators
-" hello this is a string" "is this one too?"
+print nil and true;
 
-4
+print ".";
 
-1234
-
-12.34
-
-
--14.2 * 3 / (17.03 + 300.2 * -43.2066 ) * -0.33333338 / 3.002
-
-
---0.34
-
-//.1234
-
-
-+ 445
-//fun main( args ) {
-//  print "Hello"
-//  return -15
-//}
+34 / 0;

@@ -65,6 +65,7 @@ impl<'str> Scanner<'str> {
       self.start = self.current;
       self.scan_token();
     }
+    self.tokens.push( Token::new( TokenType::Eof, self.line ) );
     let tokens = self.tokens.clone();
     self.tokens.clear();
     tokens

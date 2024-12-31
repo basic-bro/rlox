@@ -24,7 +24,9 @@ pub enum TokenType {
   Identifer( StoredString ), String( StoredString ), Number( StoredString ),
 
   And, Class, Else, False, Fun, For, If, Nil, Or,
-  Print, Return, Super, This, True, Var, While
+  Print, Return, Super, This, True, Var, While,
+
+  Eof
 }
 
 impl TokenType {
@@ -68,7 +70,8 @@ impl TokenType {
       Self::This => "this",
       Self::True => "true",
       Self::Var => "var",
-      Self::While => "while"
+      Self::While => "while",
+      Self::Eof => "[end-of-file]"
     }
   }
 

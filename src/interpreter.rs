@@ -11,7 +11,8 @@ mod token;
 mod scanner;
 mod expr;
 mod parser;
-mod evaluator;
+mod eval;
+mod stmt;
 
 
 /////////

@@ -19,7 +19,7 @@ use crate::util::*;
 pub enum Expr {
   Binary( Box<Expr> /* left */, Token /* operator */, Box<Expr> /* right */ ),
   Grouping( Box<Expr> ),
-  Literal( Token /* identifier | string | number */ ),
+  Literal( Token /* identifier | string | number | true | false | nil */ ),
   Unary( Token /* operator */, Box<Expr> )
 }
 
@@ -51,8 +51,6 @@ impl Expr {
   }
   
 }
-
-pub type PrintResult = Result<String, String>;
 
 pub struct ExprPrinter<'str> {
   db: &'str StringManager
