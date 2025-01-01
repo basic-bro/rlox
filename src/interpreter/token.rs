@@ -99,5 +99,9 @@ impl Token {
   pub fn get_token_type( &self ) -> &TokenType {
     &self.token_type
   }
+
+  pub fn get_line( &self ) -> i32 {
+    self.line
+  }
   
 }

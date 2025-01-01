@@ -7,24 +7,27 @@
 // submodules //
 ////////////////
 
+mod error;
 mod token;
 mod scanner;
 mod expr;
 mod parser;
 mod eval;
 mod stmt;
+mod executor;
 
 
 /////////
 // use //
 /////////
 
-use std::process;
 use std::fs;
 use std::{io, io::BufRead, io::Write};
 
+use crate::interpreter::eval::*;
 use crate::interpreter::scanner::*;
 use crate::interpreter::parser::*;
+use crate::interpreter::executor::*;
 use crate::util::*;
 
 
@@ -33,16 +36,14 @@ use crate::util::*;
 //////////////////////
 
 pub struct Interpreter {
-  str_lookup: StringManager,
-  had_error: bool
+  str_lookup: StringManager
 }
 
 impl Interpreter {
 
   pub fn new() -> Interpreter {
     Interpreter {
-      str_lookup: StringManager::new(),
-      had_error: false
+      str_lookup: StringManager::new()
     }
   }
 
@@ -50,12 +51,16 @@ impl Interpreter {
     let file = fs::read_to_string( path );
     match file {
       Ok( src ) => {
-        self.run( src );
-        if self.had_error {
-          process::exit( 65 );
+        let ( eval, had_error ) = self.run( src );
+        println!( "\n\n----------------------\nExecution finished with return value {}. ", eval );
+        if had_error {
+          print!( "Runtime errors were detected." );
+        }
+        else {
+          print!( "No runtime errors detected." );
         }
       },
-      Err( e ) => eprintln!( "Error: {}", e )
+      Err( e ) => eprintln!( "Error reading file: {}", e )
     }
   }
   
@@ -63,12 +68,20 @@ impl Interpreter {
     let stdin = io::stdin();
       
     loop {
-      print!( "> " );
+      print!( "\n> " );
       let _ = io::stdout().flush();
       let mut input = String::new();
       match stdin.lock().read_line( &mut input ) {
-        Ok( _ ) => self.run( input ),
-        Err( e ) => eprintln!( "Error: {}", e )
+        Ok( _ ) => {
+          let ( eval, had_error ) = self.run( input );
+          if had_error {
+            println!( "\nErr( {} )", eval );
+          }
+          else {
+            println!( "\nOk( {} )", eval );
+          }        
+        },
+        Err( e ) => eprintln!( "Error reading stdin: {}", e )
       }
     }
   }
@@ -77,21 +90,26 @@ impl Interpreter {
   ////////////////////////////
   // private implementation //
   ////////////////////////////
+  
+  fn run( &mut self, src: String ) -> ( Eval, bool ) {
 
-  fn error( &mut self, line: i32, message: String ) {
-    self.report( line, "".to_string(), message );
-  }
-  
-  fn report( &mut self, line: i32, where_: String, message: String ) {
-      eprintln!( "[line {}] Error{}: {}", line, where_, message );
-      self.had_error = true;
-  }
-  
-  fn run( &mut self, src: String ) {
+    // scanner / lexer
     let mut scanner = Scanner::new( &mut self.str_lookup );
-    let tokens = scanner.scan_tokens( src );
-    let mut parser = Parser::new( &mut self.str_lookup, tokens );
-    parser.parse();
+    let ( tokens, had_error ) = scanner.scan( src );
+    if had_error {
+      return ( Eval::Nil, true );
+    }
+
+    // parser
+    let mut parser = Parser::new( &mut self.str_lookup );
+    let ( stmts, had_error ) = parser.parse( tokens );
+    if had_error {
+      return ( Eval::Nil, true );
+    }
+
+    // executor
+    let mut executor = Executor::new( &mut self.str_lookup );
+    executor.execute( stmts )
   }
   
 }

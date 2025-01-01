@@ -21,7 +21,8 @@ pub struct Scanner<'str> {
   tokens: Vec<Token>,
   start: usize,
   current: usize,
-  line: i32
+  line: i32,
+  had_error: bool
 }
 
 impl<'str> Scanner<'str> {
@@ -55,11 +56,12 @@ impl<'str> Scanner<'str> {
       tokens: vec![],
       start: 0,
       current: 0,
-      line: 1
+      line: 1,
+      had_error: false
     }
   }
 
-  pub fn scan_tokens( &mut self, src: String ) -> Vec<Token> {
+  pub fn scan( &mut self, src: String ) -> ( Vec<Token>, bool ) {
     self.restart( src );
     while !self.is_at_end() {
       self.start = self.current;
@@ -68,7 +70,7 @@ impl<'str> Scanner<'str> {
     self.tokens.push( Token::new( TokenType::Eof, self.line ) );
     let tokens = self.tokens.clone();
     self.tokens.clear();
-    tokens
+    ( tokens, self.had_error )
   }
 
 
@@ -117,7 +119,7 @@ impl<'str> Scanner<'str> {
                  } else if is_alpha( c ) {
                    self.identifer();
                  } else {
-                   Self::error( self.line, String::from( format!( "Unexpected character: '{}'", c ) ) )
+                   self.emit_error( &format!( " at '{}'", c ), "Unexpected character." )
                  }          
     }
   }
@@ -128,6 +130,7 @@ impl<'str> Scanner<'str> {
   }
 
   fn string( &mut self ) {
+    let begin = self.line;
     while self.peek() != '"' && !self.is_at_end() {
       if self.peek() == '\n' {
         self.line += 1;
@@ -136,7 +139,7 @@ impl<'str> Scanner<'str> {
     }
 
     if self.is_at_end() {
-      Self::error( self.line, String::from( "Unterminated string." ) );
+      self.emit_error( " at end of file", &format!( "Unterminated string. (The string started on line {}.)", begin ) );
       return;
     }
 
@@ -224,12 +227,9 @@ impl<'str> Scanner<'str> {
     self.current >= self.src.len()
   }
 
-  fn report( line: i32, where_: String, message: String ) {
-    eprintln!( "[line {}] Error{}: {}", line, where_, message );
+  fn emit_error( &mut self, loc: &str, message: &str ) {
+    eprintln!( "[line {}] Error{}: {}", self.line, loc, message );
+    self.had_error = true;
   }
 
-  fn error( line: i32, message: String ) {
-    Self::report( line, "".to_string(), message );
-  }
-  
 }

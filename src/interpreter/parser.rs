@@ -7,6 +7,7 @@
 // use //
 /////////
 
+use crate::interpreter::error::*;
 use crate::interpreter::token::*;
 use crate::interpreter::expr::*;
 use crate::interpreter::stmt::*;
@@ -23,59 +24,74 @@ pub struct Parser<'str> {
   db: &'str StringManager,
   tokens: Vec<Token>,
   stmts: Vec<Box<Stmt>>,
-  current: usize
+  current: usize,
+  had_error: bool
 }
 
-type ParseExprResult = Result<Box<Expr>, String>;
-type ParseStmtResult = Result<Box<Stmt>, String>;
+type ParseExprResult = Result<Box<Expr>, Error>;
+type ParseStmtResult = Result<Box<Stmt>, Error>;
 
 impl<'str> Parser<'str> {
 
-  pub fn new( db: &'str StringManager, tokens: Vec<Token> ) -> Parser<'str> {
+  pub fn new( db: &'str StringManager ) -> Parser<'str> {
     Parser{
       db,
-      tokens,
+      tokens: vec![],
       stmts: vec![],
-      current: 0
+      current: 0,
+      had_error: false
     }  
   }
 
-  pub fn parse( &mut self ) {
+  pub fn parse( &mut self, tokens: Vec<Token> ) -> ( Vec<Box<Stmt>>, bool ) {
+    self.restart( tokens );
     while !self.is_at_end() {
       let e = self.parse_statement();
       match e {
         Ok( stmt ) => {
-          self.exec( &stmt );
+          self.stmts.push( stmt );
         },
-        Err( msg ) => {
-          eprintln!( "{}", msg );
+        Err( error ) => {
+          if error.line > 0 {
+            self.emit_error( &error );
+          }
           break;
         }
       }
     }
+    let stmts = self.stmts.clone();
+    self.stmts.clear();
+    ( stmts, self.had_error )
   }
  
 
   ////////////////////////////
   // private implementation //
   ////////////////////////////
+  
+  fn restart( &mut self, tokens: Vec<Token> ) {
+    self.tokens = tokens;
+    self.stmts.clear();
+    self.current = 0;
+    self.had_error = false;
+  }
 
   fn eval( &self, expr: &Expr ) -> EvalResult {
     expr.visit( &ExprEvaluator::new( self.db ) )
   }
 
-  fn exec( &self, stmt: &Stmt ) {
+  fn exec( &mut self, stmt: &Stmt ) {
     match stmt {
       Stmt::Expr( expr ) => {
         match self.eval( expr ) {
-          Ok( eval ) => println!( "[ Interpreter: ignoring an expression statement which evaluated to '{}'. ]", eval ),
-          Err( msg ) => eprintln!( "[ Interpreter: error while evaluating an expression statement: {}", msg )
+          Err( error ) => self.emit_error( &error ),
+          _ => {}
         }
       },
       Stmt::Print( expr ) => {
         match self.eval( expr ) {
           Ok( eval ) => print!( "{}", eval ),
-          Err( msg ) => eprintln!( "[ Interpreter: error while evaluating a print statement: {}", msg )
+          Err( error ) => self.emit_error( &error )
         }
       }
     }
@@ -87,40 +103,38 @@ impl<'str> Parser<'str> {
   fn parse_statement( &mut self ) -> ParseStmtResult {
     if *self.peek().get_token_type() == TokenType::Print {
 
+      // [ print_statement ]
+
       // consume "print"
       self.pop();
 
       // expression
-      let result = self.parse_expression();
-      if result.is_err() {
-        return Err( result.err().unwrap() )
-      }
+      let expr = self.parse_expression()?;
       
       // ";"
       if *self.peek().get_token_type() != TokenType::Semicolon {
-        return Err( format!( "Expected ';' but found '{}'", self.peek().get_lexeme( self.db ) ) );
+        return Err( self.make_error( format!( "Expected ';' here." ) ) )
       }
       self.pop();
 
       // success
-      Ok( Box::new( Stmt::Print( result.unwrap() ) ) )
+      Ok( Box::new( Stmt::Print( expr ) ) )
 
     } else {
 
+      // [ expr_statement ]
+
       // expression
-      let result = self.parse_expression();
-      if result.is_err() {
-        return Err( result.err().unwrap() )
-      }
-      
+      let expr = self.parse_expression()?;
+            
       // ";"
-      if *self.peek().get_token_type() != TokenType::Semicolon {
-        return Err( format!( "Expected ';' but found '{}'", self.peek().get_lexeme( self.db ) ) );
+      if *self.peek().get_token_type() != TokenType::Semicolon && !self.is_at_end() {
+        return Err( self.make_error( format!( "Expected ';' here." ) ) )
       }
       self.pop();
 
       // success
-      Ok( Box::new( Stmt::Expr( result.unwrap() ) ) )
+      Ok( Box::new( Stmt::Expr( expr ) ) )
     }
   }
 
@@ -239,7 +253,7 @@ impl<'str> Parser<'str> {
       self.pop();
       let expr = Box::new( Expr::Grouping( self.parse_expression()? ) );
       if *self.peek().get_token_type() != TokenType::RightParen {
-        Err( format!( "Expected ')' but found '{:?}'", *self.peek() ) )
+        Err( self.make_error( format!( "Expected ')' here." ) ) )
       } else {
         self.pop();
         Ok( expr )
@@ -253,8 +267,10 @@ impl<'str> Parser<'str> {
   fn parse_primary( &mut self ) -> ParseExprResult {
     if self.is_primary() {
       Ok( Box::new( Expr::Literal( *self.pop() ) ) )
+    } else if *self.peek().get_token_type() == TokenType::Eof {
+      Err( Error::new( -1, "".to_string(), "".to_string() ) )
     } else {
-      Err( format!( "Expected a primary expression but found '{:?}'", *self.peek() ) )
+      Err( self.make_error( format!( "Expected a primary expression here." ) ) )
     }
   }
 
@@ -324,7 +340,7 @@ impl<'str> Parser<'str> {
         | TokenType::Nil
         | TokenType::Number( _ )
         | TokenType::String( _ )
-        //| TokenType::Identifer( _ )
+        | TokenType::Identifer( _ )
         => true,
       _ => false
     }
@@ -353,6 +369,15 @@ impl<'str> Parser<'str> {
 
   fn is_at_end( &self ) -> bool {
     self.current >= self.tokens.len()
+  }
+
+  fn make_error( &self, msg: String ) -> Error {
+    Error::from_token( self.peek(), msg, self.db )
+  }
+
+  fn emit_error( &mut self, error: &Error ) {
+    eprintln!( "[line {}] Error{}: {}", error.line, error.loc, error.msg );
+    self.had_error = true;
   }
 
 }

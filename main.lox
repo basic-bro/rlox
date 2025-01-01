@@ -1,11 +1,25 @@
-
-
 print "Hello world! ";
 
 print "In Lox, when nil is cast to bool, the result is ";
 
-print nil and true;
+print nil or 3;
 
 print ".";
 
-34 / 0;
+//"abc" - "ABC";
+
+//true * false;
+
+//nil / nil;
+
+
+//true * nil;
+
+//3 - y;
+
+//-true;
+
+
+//34 / 0;
+
+

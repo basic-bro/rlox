@@ -1,6 +1,6 @@
 // private module rlox::util
 
-use std::{collections::{HashMap, HashSet}, hash::{DefaultHasher, Hash, Hasher}};
+use std::{collections::HashMap, hash::{DefaultHasher, Hash, Hasher}};
 
 pub fn substring<'a>( s: &'a str, start: usize, len: usize ) -> Option<&'a str> {
   if start < s.len() && ( start + len - 1 ) < s.len() {

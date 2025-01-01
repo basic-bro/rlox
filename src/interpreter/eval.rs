@@ -9,6 +9,7 @@
 
 use std::fmt::Display;
 
+use crate::interpreter::error::*;
 use crate::interpreter::token::*;
 use crate::interpreter::expr::*;
 use crate::util::*;
@@ -40,6 +41,15 @@ impl Eval {
     }
   }
 
+  pub fn get_type_name( &self ) -> &str {
+    match self {
+      Eval::Number( _ ) => "Number",
+      Eval::StringLiteral( _ ) => "String",
+      Eval::Bool( _ ) => "Bool",
+      Eval::Nil => "Nil"
+    }
+  }
+
 }
 
 impl Display for Eval {
@@ -55,7 +65,7 @@ impl Display for Eval {
 
 }
   
-pub type EvalResult = Result<Eval, String>;
+pub type EvalResult = Result<Eval, Error>;
 
 pub struct ExprEvaluator<'str> {
   db: &'str StringManager
@@ -76,9 +86,9 @@ impl<'str> ExprEvaluator<'str> {
 // private implementation //
 ////////////////////////////
 
-impl<'str> ExprVisitor<Eval, String> for ExprEvaluator<'str> {
+impl<'str> ExprVisitor<Eval> for ExprEvaluator<'str> {
 
-  fn visit_binary( &self, left: Eval, op: &Token, right: Eval ) -> Result<Eval, String> {
+  fn visit_binary( &self, left: Eval, op: &Token, right: Eval ) -> Result<Eval, Error> {
     match op.get_token_type() {
 
       // first, evaluate any logical operator
@@ -113,7 +123,8 @@ impl<'str> ExprVisitor<Eval, String> for ExprEvaluator<'str> {
                   TokenType::Slash => Ok( Eval::Number( x / y ) ),
                   
                   // error 
-                  _ => Err( format!( "Unknown binary operation on numbers: '{}'", op.get_lexeme( self.db ) ) )
+                  _ => Err( Error::from_token( op,
+                    "Unknown binary operation on type Number.".to_string(), self.db ) )
                 },
           
           // binary operations on StringLiterals
@@ -124,7 +135,8 @@ impl<'str> ExprVisitor<Eval, String> for ExprEvaluator<'str> {
                   TokenType::Plus => Ok( Eval::StringLiteral( x.to_owned() + y ) ),
 
                   // error
-                  _ => Err( format!( "Unknown binary operation on strings: '{}'", op.get_lexeme( self.db ) ) )
+                  _ => Err( Error::from_token( op,
+                    "Unknown binary operation on type String.".to_string(), self.db ) )
                 },
           
           // binary operations on Bools
@@ -136,7 +148,8 @@ impl<'str> ExprVisitor<Eval, String> for ExprEvaluator<'str> {
                   TokenType::BangEqual  => Ok( Eval::Bool( x != y ) ),
 
                   // error
-                  _ => Err( format!( "Unknown binary operation on booleans: '{}'", op.get_lexeme( self.db ) ) )
+                  _ => Err( Error::from_token( op,
+                    "Unknown binary operation on type Bool.".to_string(), self.db ) )
             },
 
           // binary operation on Nils
@@ -148,39 +161,46 @@ impl<'str> ExprVisitor<Eval, String> for ExprEvaluator<'str> {
                 TokenType::BangEqual  => Ok( Eval::Bool( false ) ),
 
                 // error
-                _ => Err( format!( "Unknown binary operation on nils: '{}'", op.get_lexeme( self.db ) ) )
+                _ => Err( Error::from_token( op,
+                  "Unknown binary operation on type Nil.".to_string(), self.db ) )
             }
 
           // error
-          _ => Err( format!( "Unknown or unsupported binary operation '{}' on values {:?} and {:?}", op.get_lexeme( self.db ), left, right ) )
+          _ => Err( Error::from_token( op,
+            format!( "Unknown binary operation on the types provided. (The types are {} and {}, respectively.)",
+              left.get_type_name(), right.get_type_name() ), self.db ) )
         }
     }
   }
 
-  fn visit_grouping( &self, expr: Eval ) -> Result<Eval, String> {
+  fn visit_grouping( &self, expr: Eval ) -> Result<Eval, Error> {
     Ok( expr )
   }
 
-  fn visit_literal( &self, literal: &Token ) -> Result<Eval, String> {
+  fn visit_literal( &self, literal: &Token ) -> Result<Eval, Error> {
     match literal.get_token_type() {
       TokenType::String( s ) => Ok( Eval::StringLiteral( self.db.gets( *s ).to_string() ) ),
       TokenType::Number( s ) => Ok( Eval::Number( self.db.gets( *s ).parse::<f64>().unwrap() ) ),
       TokenType::True => Ok( Eval::Bool( true ) ),
       TokenType::False => Ok( Eval::Bool( false ) ),
       TokenType::Nil => Ok( Eval::Nil ),
-      TokenType::Identifer( _ ) => Err( format!( "eval() not implemented yet: {:?}", literal ) ),
-      _ => Err( format!( "Internal error: this token should not be parsed as an Expr::Literal: {:?}", literal ) )
+      TokenType::Identifer( _ ) => Err(
+        Error::from_token( literal, "eval() not implemented yet for identifiers.".to_string(), self.db ) ),
+      _ => Err( Error::from_token( literal,
+        "Internal error: evaluation of this expression is not implemented.".to_string(), self.db ) )
     }
   }
 
-  fn visit_unary( &self, op: &Token, expr: Eval ) -> Result<Eval, String> {
+  fn visit_unary( &self, op: &Token, expr: Eval ) -> Result<Eval, Error> {
     match op.get_token_type() {
       TokenType::Bang => Ok( Eval::Bool( !expr.is_truthy() ) ),
       TokenType::Minus => match expr {
         Eval::Number( x ) => Ok( Eval::Number( -x ) ),
-        _ => Err( format!( "Unary '-' cannot be applied to the value '{:?}'", expr ) )
+        _ => Err( Error::from_token( op,
+          format!( "Unary '-' cannot be applied to a value of type {}.", expr.get_type_name() ), self.db ) )
       },
-      _ => Err( format!( "Internal error: this token should not be parsed as a unary operation: {}", op.get_lexeme( self.db ) ) )
+      _ => Err( Error::from_token( op,
+        "Internal error: evaluation of this unary operator is not implemented.".to_string(), self. db ) )
     }
   }
   
