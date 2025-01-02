@@ -7,11 +7,11 @@
 // use //
 /////////
 
+use crate::interpreter::decl::*;
 use crate::interpreter::error::*;
 use crate::interpreter::token::*;
 use crate::interpreter::expr::*;
 use crate::interpreter::stmt::*;
-use crate::interpreter::eval::*;
 
 use crate::util::StringManager;
 
@@ -23,13 +23,14 @@ use crate::util::StringManager;
 pub struct Parser<'str> {
   db: &'str StringManager,
   tokens: Vec<Token>,
-  stmts: Vec<Box<Stmt>>,
+  decls: Vec<Decl>,
   current: usize,
   had_error: bool
 }
 
-type ParseExprResult = Result<Box<Expr>, Error>;
-type ParseStmtResult = Result<Box<Stmt>, Error>;
+type ParseExprResult = Result<Expr, Error>;
+type ParseStmtResult = Result<Stmt, Error>;
+type ParseDeclResult = Result<Decl, Error>;
 
 impl<'str> Parser<'str> {
 
@@ -37,31 +38,37 @@ impl<'str> Parser<'str> {
     Parser{
       db,
       tokens: vec![],
-      stmts: vec![],
+      decls: vec![],
       current: 0,
       had_error: false
     }  
   }
 
-  pub fn parse( &mut self, tokens: Vec<Token> ) -> ( Vec<Box<Stmt>>, bool ) {
+  pub fn parse( &mut self, tokens: Vec<Token> ) -> ( Vec<Decl>, bool ) {
     self.restart( tokens );
     while !self.is_at_end() {
-      let e = self.parse_statement();
+      if *self.peek().get_token_type() == TokenType::Eof {
+        break;
+      }
+      let e = self.parse_declaration();
       match e {
-        Ok( stmt ) => {
-          self.stmts.push( stmt );
+        Ok( decl ) => {
+          self.decls.push( decl );
         },
         Err( error ) => {
           if error.line > 0 {
             self.emit_error( &error );
           }
+          else {
+            eprintln!( "Ignoring error: {:?}", error );
+          }
           break;
         }
       }
     }
-    let stmts = self.stmts.clone();
-    self.stmts.clear();
-    ( stmts, self.had_error )
+    let decls = self.decls.clone();
+    self.decls.clear();
+    ( decls, self.had_error )
   }
  
 
@@ -71,29 +78,56 @@ impl<'str> Parser<'str> {
   
   fn restart( &mut self, tokens: Vec<Token> ) {
     self.tokens = tokens;
-    self.stmts.clear();
+    self.decls.clear();
     self.current = 0;
     self.had_error = false;
   }
 
-  fn eval( &self, expr: &Expr ) -> EvalResult {
-    expr.visit( &ExprEvaluator::new( self.db ) )
+  // declaration => var_declaration | statement
+  // var_declaration => identifer ( "=" expression )? ";"
+  fn parse_declaration( &mut self ) -> ParseDeclResult {
+
+    // var_declaration
+    if self.is_var_decl() {
+      return Ok( self.parse_var_decl()? );
+    }
+
+    // statement
+    let stmt = self.parse_statement()?;
+    Ok( Decl::Stmt( stmt ) )
   }
 
-  fn exec( &mut self, stmt: &Stmt ) {
-    match stmt {
-      Stmt::Expr( expr ) => {
-        match self.eval( expr ) {
-          Err( error ) => self.emit_error( &error ),
-          _ => {}
-        }
-      },
-      Stmt::Print( expr ) => {
-        match self.eval( expr ) {
-          Ok( eval ) => print!( "{}", eval ),
-          Err( error ) => self.emit_error( &error )
-        }
-      }
+  fn parse_var_decl( &mut self ) -> ParseDeclResult {
+
+    // consume "var"
+    self.pop();
+
+    // identifier
+    let identifier = self.parse_identifier()?;
+
+    // ( "=" expression )?    [ aka tail ]
+    let tail: Option<Expr> = 
+      if *self.peek().get_token_type() == TokenType::Equal {
+        self.pop();
+        let expr = self.parse_expression()?;
+        Some( expr )
+      } else {
+        None
+      };
+
+    // ";"
+    if *self.peek().get_token_type() != TokenType::Semicolon {
+      return Err( self.make_error( format!( "Expected ';' here." ) ) )
+    }
+    self.pop();
+    
+    return Ok( Decl::Var( identifier, tail ) );
+  }
+
+  fn parse_identifier( &mut self ) -> Result<Token, Error> {
+    match *self.peek().get_token_type() {
+      TokenType::Identifer( _ ) => { Ok( *self.pop() ) },
+      _ => Err( self.make_error( "Expected an identifier here.".to_string() ) )
     }
   }
 
@@ -101,9 +135,9 @@ impl<'str> Parser<'str> {
   // print_statement => "print" expression ";"
   // expr_statement => expression ";"
   fn parse_statement( &mut self ) -> ParseStmtResult {
-    if *self.peek().get_token_type() == TokenType::Print {
 
-      // [ print_statement ]
+    // print_statement
+    if *self.peek().get_token_type() == TokenType::Print {
 
       // consume "print"
       self.pop();
@@ -118,11 +152,10 @@ impl<'str> Parser<'str> {
       self.pop();
 
       // success
-      Ok( Box::new( Stmt::Print( expr ) ) )
+      Ok( Stmt::Print( expr ) )
 
+    // expr_statement
     } else {
-
-      // [ expr_statement ]
 
       // expression
       let expr = self.parse_expression()?;
@@ -134,7 +167,7 @@ impl<'str> Parser<'str> {
       self.pop();
 
       // success
-      Ok( Box::new( Stmt::Expr( expr ) ) )
+      Ok( Stmt::Expr( expr ) )
     }
   }
 
@@ -155,7 +188,7 @@ impl<'str> Parser<'str> {
        if self.is_logical_or() {
         let operator = *self.pop();
         let right = self.parse_logical_and()?;
-        expr = Box::new( Expr::Binary( expr, operator, right ) );
+        expr = Expr::Binary( Box::new( expr ), operator, Box::new( right ) );
       } else {
         break;
       }
@@ -170,7 +203,7 @@ impl<'str> Parser<'str> {
        if self.is_logical_and() {
         let operator = *self.pop();
         let right = self.parse_equality()?;
-        expr = Box::new( Expr::Binary( expr, operator, right ) );
+        expr = Expr::Binary( Box::new( expr ), operator, Box::new( right ) );
       } else {
         break;
       }
@@ -185,7 +218,7 @@ impl<'str> Parser<'str> {
        if self.is_equality() {
         let operator = *self.pop();
         let right = self.parse_comparison()?;
-        expr = Box::new( Expr::Binary( expr, operator, right ) );
+        expr = Expr::Binary( Box::new( expr ), operator, Box::new( right ) );
       } else {
         break;
       }
@@ -200,7 +233,7 @@ impl<'str> Parser<'str> {
       if self.is_comparison() {
         let operator = *self.pop();
         let right = self.parse_term()?;
-        expr = Box::new( Expr::Binary( expr, operator, right ) );
+        expr = Expr::Binary( Box::new( expr ), operator, Box::new( right ) );
       } else {
         break;
       }
@@ -215,7 +248,7 @@ impl<'str> Parser<'str> {
       if self.is_term() {
         let operator = *self.pop();
         let right = self.parse_factor()?;
-        expr = Box::new( Expr::Binary( expr, operator, right ) );
+        expr = Expr::Binary( Box::new( expr ), operator, Box::new( right ) );
       } else {
         break;
       }
@@ -230,7 +263,7 @@ impl<'str> Parser<'str> {
       if self.is_factor()  {
         let operator = *self.pop();
         let right = self.parse_unary()?;
-        expr = Box::new( Expr::Binary( expr, operator, right ) );
+        expr = Expr::Binary( Box::new( expr ), operator, Box::new( right ) );
       } else {
         break;
       }
@@ -241,7 +274,7 @@ impl<'str> Parser<'str> {
   // unary => ( ( "!" | "-" ) unary ) | grouping
   fn parse_unary( &mut self ) -> ParseExprResult {
     if self.is_unary() {
-        Ok( Box::new( Expr::Unary( *self.pop(), self.parse_unary()? ) ) )
+        Ok( Expr::Unary( *self.pop(), Box::new( self.parse_unary()? ) ) )
     } else {
       self.parse_grouping()
     }
@@ -251,7 +284,7 @@ impl<'str> Parser<'str> {
   fn parse_grouping( &mut self ) -> ParseExprResult {
     if self.is_grouping() {
       self.pop();
-      let expr = Box::new( Expr::Grouping( self.parse_expression()? ) );
+      let expr = Expr::Grouping( Box::new( self.parse_expression()? ) );
       if *self.peek().get_token_type() != TokenType::RightParen {
         Err( self.make_error( format!( "Expected ')' here." ) ) )
       } else {
@@ -266,12 +299,16 @@ impl<'str> Parser<'str> {
   // primary => "true" | "false" | "nil" | NUMBER | STRING_LITERAL
   fn parse_primary( &mut self ) -> ParseExprResult {
     if self.is_primary() {
-      Ok( Box::new( Expr::Literal( *self.pop() ) ) )
-    } else if *self.peek().get_token_type() == TokenType::Eof {
-      Err( Error::new( -1, "".to_string(), "".to_string() ) )
+      Ok( Expr::Literal( *self.pop() ) )
+    // } else if *self.peek().get_token_type() == TokenType::Eof {
+    //   Err( Error::new( -1, "".to_string(), "".to_string() ) )
     } else {
       Err( self.make_error( format!( "Expected a primary expression here." ) ) )
     }
+  }
+
+  fn is_var_decl( &self ) -> bool {
+    *self.peek().get_token_type() == TokenType::Var
   }
 
   fn is_logical_or( &self ) -> bool {

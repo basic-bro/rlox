@@ -7,14 +7,16 @@
 // submodules //
 ////////////////
 
-mod error;
 mod token;
-mod scanner;
 mod expr;
-mod parser;
-mod eval;
 mod stmt;
+mod decl;
+mod parser;
+mod scanner;
 mod executor;
+mod eval;
+mod error;
+mod env;
 
 
 /////////
@@ -102,14 +104,14 @@ impl Interpreter {
 
     // parser
     let mut parser = Parser::new( &mut self.str_lookup );
-    let ( stmts, had_error ) = parser.parse( tokens );
+    let ( decls, had_error ) = parser.parse( tokens );
     if had_error {
       return ( Eval::Nil, true );
     }
 
     // executor
     let mut executor = Executor::new( &mut self.str_lookup );
-    executor.execute( stmts )
+    executor.execute( decls )
   }
   
 }

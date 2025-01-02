@@ -1,25 +1,9 @@
-print "Hello world! ";
-
-print "In Lox, when nil is cast to bool, the result is ";
-
-print nil or 3;
-
-print ".";
-
-//"abc" - "ABC";
-
-//true * false;
-
-//nil / nil;
 
 
-//true * nil;
-
-//3 - y;
-
-//-true;
+var pi = nil;
+var pi = 3;
 
 
-//34 / 0;
 
 
+print 1000000 * 462.0012345456 / ( -3.423 + 893 * pi );

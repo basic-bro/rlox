@@ -41,7 +41,7 @@ impl TokenType {
       Self::Dot => ".",
       Self::Minus => "-",
       Self::Plus => "+",
-      Self::Semicolon => ":",
+      Self::Semicolon => ";",
       Self::Slash => "/",
       Self::Star => "*",
       Self::Bang => "!",

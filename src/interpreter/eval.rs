@@ -9,6 +9,7 @@
 
 use std::fmt::Display;
 
+use crate::interpreter::env::*;
 use crate::interpreter::error::*;
 use crate::interpreter::token::*;
 use crate::interpreter::expr::*;
@@ -19,7 +20,7 @@ use crate::util::*;
 // public interface //
 //////////////////////
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Eval {
   Number( f64 ),
   StringLiteral( String ),
@@ -67,15 +68,17 @@ impl Display for Eval {
   
 pub type EvalResult = Result<Eval, Error>;
 
-pub struct ExprEvaluator<'str> {
-  db: &'str StringManager
+pub struct ExprEvaluator<'str, 'env> {
+  db: &'str StringManager,
+  env: &'env Env
 }
 
-impl<'str> ExprEvaluator<'str> {
+impl<'str, 'env> ExprEvaluator<'str, 'env> {
 
-  pub fn new( db: &'str StringManager ) -> ExprEvaluator<'str> {
+  pub fn new( db: &'str StringManager, env: &'env Env ) -> ExprEvaluator<'str, 'env> {
     ExprEvaluator {
-      db
+      db,
+      env
     }
   }
 
@@ -86,7 +89,7 @@ impl<'str> ExprEvaluator<'str> {
 // private implementation //
 ////////////////////////////
 
-impl<'str> ExprVisitor<Eval> for ExprEvaluator<'str> {
+impl<'str, 'env> ExprVisitor<Eval> for ExprEvaluator<'str, 'env> {
 
   fn visit_binary( &self, left: Eval, op: &Token, right: Eval ) -> Result<Eval, Error> {
     match op.get_token_type() {
@@ -184,8 +187,15 @@ impl<'str> ExprVisitor<Eval> for ExprEvaluator<'str> {
       TokenType::True => Ok( Eval::Bool( true ) ),
       TokenType::False => Ok( Eval::Bool( false ) ),
       TokenType::Nil => Ok( Eval::Nil ),
-      TokenType::Identifer( _ ) => Err(
-        Error::from_token( literal, "eval() not implemented yet for identifiers.".to_string(), self.db ) ),
+      TokenType::Identifer( id ) => {
+
+        // error on undeclared variable
+        if !self.env.contains_key( id ) {
+          Err( Error::from_token( literal, "Undeclared variable.".to_string(), self.db ) )
+        } else {
+          Ok( self.env.get( id ).unwrap().clone() )
+        }
+      },
       _ => Err( Error::from_token( literal,
         "Internal error: evaluation of this expression is not implemented.".to_string(), self.db ) )
     }

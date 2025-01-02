@@ -47,7 +47,7 @@ pub fn default_hash( s: &str ) -> u64 {
   hasher.finish()
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Hash, Eq)]
 pub struct StoredString {
   key: u64
 }

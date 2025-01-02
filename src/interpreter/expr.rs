@@ -10,6 +10,8 @@
 use crate::interpreter::error::*;
 use crate::interpreter::token::*;
 use crate::util::*;
+use crate::interpreter::eval::*;
+use crate::interpreter::env::*;
 
 
 //////////////////////
@@ -52,6 +54,10 @@ impl Expr {
       Ok( s ) => s,
       Err( error ) => error.msg
     }
+  }
+
+  pub fn eval( &self, db: &StringManager, env: &Env ) -> EvalResult {
+    self.visit( &ExprEvaluator::new( db, env ) )
   }
   
 }

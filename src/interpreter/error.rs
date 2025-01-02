@@ -15,6 +15,7 @@ use crate::util::StringManager;
 // public interface //
 //////////////////////
 
+#[derive(Debug)]
 pub struct Error {
   pub line: i32,
   pub loc: String,

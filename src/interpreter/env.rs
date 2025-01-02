@@ -1,0 +1,20 @@
+///////////////////////////////////////////
+// private module rlox::interpreter::env //
+///////////////////////////////////////////
+
+
+/////////
+// use //
+/////////
+
+use std::collections::HashMap;
+
+use crate::util::*;
+use crate::interpreter::eval::*;
+
+
+//////////////////////
+// public interface //
+//////////////////////
+
+pub type Env = HashMap<StoredString, Eval>;

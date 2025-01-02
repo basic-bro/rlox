@@ -1,5 +1,5 @@
 ////////////////////////////////////////////
-// private module rlox::interpreter::stmt //
+// private module rlox::interpreter::decl //
 ////////////////////////////////////////////
 
 
@@ -7,6 +7,8 @@
 // use //
 /////////
 
+use crate::interpreter::token::*;
+use crate::interpreter::stmt::*;
 use crate::interpreter::expr::*;
 
 
@@ -15,18 +17,7 @@ use crate::interpreter::expr::*;
 //////////////////////
 
 #[derive(Clone)]
-pub enum Stmt {
-  Expr( Expr ),
-  Print( Expr )
-}
-
-impl Stmt {
-
-  pub fn get_expr( &self ) -> &Expr {
-    match self {
-      Stmt::Expr( expr ) => expr,
-      Stmt::Print( expr ) => expr
-    }
-  }
-
+pub enum Decl {
+  Var( Token /* identifier */, Option<Expr> /* initialiser */ ),
+  Stmt( Stmt )
 }
