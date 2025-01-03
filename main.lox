@@ -1,9 +1,24 @@
 
 
-var pi = nil;
-var pi = 3;
+//var 3 = nil;
+var pi = 3.14;
+var tau = "Hello ";
+var sigma = "world!";
+
+gamma = sigma;
+
+var beta = tau + sigma;
+
+
+print beta;
 
 
 
 
-print 1000000 * 462.0012345456 / ( -3.423 + 893 * pi );
+
+//print pi;
+//print tau;
+//print sigma;
+
+
+//print 1000000 * 462.0012345456 / ( -3.423 + 893 * pi );

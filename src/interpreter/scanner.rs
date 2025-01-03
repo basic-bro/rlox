@@ -146,8 +146,8 @@ impl<'str> Scanner<'str> {
     self.advance();
 
     let value = substring( &self.src, self.start + 1, self.current - self.start - 2 ).unwrap();
-    let stored_string = self.db.puts( value );
-    self.add_token( TokenType::String( stored_string ) );
+    let key = self.db.puts( value );
+    self.add_token( TokenType::String( key ) );
   }
 
   fn number( &mut self ) {
@@ -163,8 +163,8 @@ impl<'str> Scanner<'str> {
     }
 
     let value = substring( &self.src, self.start, self.current - self.start ).unwrap();
-    let stored_string = self.db.puts( value );
-    self.add_token( TokenType::Number( stored_string ) );
+    let key = self.db.puts( value );
+    self.add_token( TokenType::Number( key ) );
   }
 
   fn identifer( &mut self ) {
@@ -173,11 +173,11 @@ impl<'str> Scanner<'str> {
     }
 
     let value = substring( &self.src, self.start, self.current - self.start ).unwrap();
-    let stored_string = self.db.puts( value );
+    let key = self.db.puts( value );
 
     match Scanner::keyword( value ) {
       Some( tt ) => self.add_token( tt ),
-      None => self.add_token( TokenType::Identifer( stored_string ) ),
+      None => self.add_token( TokenType::Identifer( key ) ),
     }
   }
 

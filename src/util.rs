@@ -12,7 +12,7 @@ pub fn substring<'a>( s: &'a str, start: usize, len: usize ) -> Option<&'a str> 
 }
 
 pub fn char_at( s: &str, idx: usize ) -> Option<char> {
-  for x in s.char_indices().filter( | ( i, _c ) | *i == idx ).take( 1 ) {
+  for x in s.char_indices().filter( | ( i, _ ) | *i == idx ).take( 1 ) {
       return Some( x.1 );
   }
   None
@@ -41,19 +41,29 @@ pub fn is_alphanumeric( c: char ) -> bool {
   is_alpha( c ) || is_digit( c )
 }
 
-pub fn default_hash( s: &str ) -> u64 {
+fn default_hash( s: &str ) -> u64 {
   let mut hasher = DefaultHasher::new();
   s.hash( &mut hasher );
   hasher.finish()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Hash, Eq)]
-pub struct StoredString {
+pub struct StringKey {
   key: u64
 }
 
+impl StringKey {
+
+  pub fn new( s: &str ) -> StringKey {
+    StringKey {
+      key: default_hash( s )
+    }
+  }
+
+}
+
 pub struct StringManager {
-  db: HashMap<u64, String>
+  db: HashMap<StringKey, String>
 }
 
 impl StringManager {
@@ -64,18 +74,16 @@ impl StringManager {
     }
   }
 
-  pub fn puts( &mut self, s: &str ) -> StoredString {
-    let key = default_hash( s );
+  pub fn puts( &mut self, s: &str ) -> StringKey {
+    let key = StringKey::new( s );
     if !self.db.contains_key( &key ) {
       self.db.insert( key, String::from( s ) );
     }
-    StoredString {
-      key
-    }
+    key
   }
 
-  pub fn gets( &self, stored_string: StoredString ) -> &str {
-    self.db.get( &stored_string.key ).unwrap()
+  pub fn gets( &self, key: StringKey ) -> &String {
+    self.db.get( &key ).expect( "Unknown key. The caller of gets() assumes responsibility for checking that the key exists." )
   }
   
 }

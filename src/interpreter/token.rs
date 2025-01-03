@@ -21,7 +21,7 @@ pub enum TokenType {
   Bang, BangEqual, Equal, EqualEqual,
   Greater, GreaterEqual, Less, LessEqual,
 
-  Identifer( StoredString ), String( StoredString ), Number( StoredString ),
+  Identifer( StringKey ), String( StringKey ), Number( StringKey ),
 
   And, Class, Else, False, Fun, For, If, Nil, Or,
   Print, Return, Super, This, True, Var, While,
@@ -75,6 +75,15 @@ impl TokenType {
     }
   }
 
+  pub fn get_key( &self ) -> StringKey {
+    match self {
+      Self::Identifer( identifier ) => *identifier,
+      Self::String( string ) => *string,
+      Self::Number( number ) => *number,
+      _ => panic!( "The caller of get_key() assumes responsibility for checking that the given token has a key." )
+    }
+  }
+
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -96,12 +105,23 @@ impl Token {
     self.token_type.get_lexeme( db )
   }
 
-  pub fn get_token_type( &self ) -> &TokenType {
+  pub fn get_type( &self ) -> &TokenType {
     &self.token_type
   }
 
   pub fn get_line( &self ) -> i32 {
     self.line
+  }
+
+  pub fn is_identifier( &self ) -> bool {
+    match self.token_type {
+      TokenType::Identifer( _ ) => true,
+      _ => false
+    }
+  }
+
+  pub fn get_key( &self ) -> StringKey {
+    self.token_type.get_key()
   }
   
 }

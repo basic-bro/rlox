@@ -13,6 +13,7 @@ use crate::interpreter::env::*;
 use crate::interpreter::error::*;
 use crate::interpreter::token::*;
 use crate::interpreter::expr::*;
+
 use crate::util::*;
 
 
@@ -91,8 +92,12 @@ impl<'str, 'env> ExprEvaluator<'str, 'env> {
 
 impl<'str, 'env> ExprVisitor<Eval> for ExprEvaluator<'str, 'env> {
 
+  fn visit_assignment( &self, _: &Token, right: Eval ) -> Result<Eval, Error> {
+    Ok( right )
+  }
+
   fn visit_binary( &self, left: Eval, op: &Token, right: Eval ) -> Result<Eval, Error> {
-    match op.get_token_type() {
+    match op.get_type() {
 
       // first, evaluate any logical operator
       // [ these involve casting to bool => .is_truthy() ]
@@ -105,7 +110,7 @@ impl<'str, 'env> ExprVisitor<Eval> for ExprEvaluator<'str, 'env> {
 
           // binary operations on Numbers
           ( Eval::Number( x ), Eval::Number( y ) )
-            =>  match op.get_token_type() {
+            =>  match op.get_type() {
 
                   // equality
                   TokenType::EqualEqual => Ok( Eval::Bool( x == y ) ),
@@ -132,7 +137,7 @@ impl<'str, 'env> ExprVisitor<Eval> for ExprEvaluator<'str, 'env> {
           
           // binary operations on StringLiterals
           ( Eval::StringLiteral( x ), Eval::StringLiteral( y ) )
-            =>  match op.get_token_type() {
+            =>  match op.get_type() {
 
                   // concatenation
                   TokenType::Plus => Ok( Eval::StringLiteral( x.to_owned() + y ) ),
@@ -144,7 +149,7 @@ impl<'str, 'env> ExprVisitor<Eval> for ExprEvaluator<'str, 'env> {
           
           // binary operations on Bools
           ( Eval::Bool( x ), Eval::Bool( y ) )
-            =>  match op.get_token_type() {
+            =>  match op.get_type() {
 
                   // equality
                   TokenType::EqualEqual => Ok( Eval::Bool( x == y ) ),
@@ -157,7 +162,7 @@ impl<'str, 'env> ExprVisitor<Eval> for ExprEvaluator<'str, 'env> {
 
           // binary operation on Nils
           ( Eval::Nil, Eval::Nil )
-            =>  match op.get_token_type() {
+            =>  match op.get_type() {
 
                 // equality
                 TokenType::EqualEqual => Ok( Eval::Bool( true ) ),
@@ -181,28 +186,19 @@ impl<'str, 'env> ExprVisitor<Eval> for ExprEvaluator<'str, 'env> {
   }
 
   fn visit_literal( &self, literal: &Token ) -> Result<Eval, Error> {
-    match literal.get_token_type() {
+    match literal.get_type() {
       TokenType::String( s ) => Ok( Eval::StringLiteral( self.db.gets( *s ).to_string() ) ),
       TokenType::Number( s ) => Ok( Eval::Number( self.db.gets( *s ).parse::<f64>().unwrap() ) ),
       TokenType::True => Ok( Eval::Bool( true ) ),
       TokenType::False => Ok( Eval::Bool( false ) ),
       TokenType::Nil => Ok( Eval::Nil ),
-      TokenType::Identifer( id ) => {
-
-        // error on undeclared variable
-        if !self.env.contains_key( id ) {
-          Err( Error::from_token( literal, "Undeclared variable.".to_string(), self.db ) )
-        } else {
-          Ok( self.env.get( id ).unwrap().clone() )
-        }
-      },
       _ => Err( Error::from_token( literal,
         "Internal error: evaluation of this expression is not implemented.".to_string(), self.db ) )
     }
   }
 
   fn visit_unary( &self, op: &Token, expr: Eval ) -> Result<Eval, Error> {
-    match op.get_token_type() {
+    match op.get_type() {
       TokenType::Bang => Ok( Eval::Bool( !expr.is_truthy() ) ),
       TokenType::Minus => match expr {
         Eval::Number( x ) => Ok( Eval::Number( -x ) ),
@@ -211,6 +207,22 @@ impl<'str, 'env> ExprVisitor<Eval> for ExprEvaluator<'str, 'env> {
       },
       _ => Err( Error::from_token( op,
         "Internal error: evaluation of this unary operator is not implemented.".to_string(), self. db ) )
+    }
+  }
+
+  fn visit_var( &self, var: &Token ) -> Result<Eval, Error> {
+    match var.get_type() {
+      TokenType::Identifer( id ) => {
+
+        // error on undeclared variable
+        if !self.env.has_var( *id ) {
+          Err( Error::from_token( var, "Undeclared variable.".to_string(), self.db ) )
+        } else {
+          Ok( self.env.read_var( *id ).clone() )
+        }
+      }
+      _ => Err( Error::from_token( var,
+        "Internal error: evaluation of this expression is not implemented.".to_string(), self. db ) )
     }
   }
   

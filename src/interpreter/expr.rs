@@ -20,17 +20,21 @@ use crate::interpreter::env::*;
 
 #[derive(Debug, Clone)]
 pub enum Expr {
+  Assignment( Token /* identifier */, Box<Expr> /* value */ ),
   Binary( Box<Expr> /* left */, Token /* operator */, Box<Expr> /* right */ ),
   Grouping( Box<Expr> ),
-  Literal( Token /* identifier | string | number | true | false | nil | eof */ ),
-  Unary( Token /* operator */, Box<Expr> )
+  Literal( Token /* identifier? | string | number | true | false | nil | eof */ ),
+  Unary( Token /* operator */, Box<Expr> ),
+  Var( Token /* variable */ )
 }
 
 pub trait ExprVisitor<T> {
+  fn visit_assignment( &self, var: &Token, right: T ) -> Result<T, Error>;
   fn visit_binary( &self, left: T, op: &Token, right: T ) -> Result<T, Error>;
   fn visit_grouping( &self, expr: T ) -> Result<T, Error>;
   fn visit_literal( &self, literal: &Token ) -> Result<T, Error>;
   fn visit_unary( &self, op: &Token, expr: T ) -> Result<T, Error>;
+  fn visit_var( &self, var: &Token ) -> Result<T, Error>;
 }
 
 impl Expr {
@@ -38,6 +42,8 @@ impl Expr {
   pub fn visit<T, V: ExprVisitor<T>>( &self, visitor: &V ) -> Result<T, Error>
   {
     match self {
+      Self::Assignment( var, right )
+        => visitor.visit_assignment( var, right.visit( visitor )? ),
       Self::Binary( left, op , right )
         => visitor.visit_binary( left.visit( visitor )?, op, right.visit( visitor )? ),
       Self::Grouping( inner )
@@ -45,7 +51,9 @@ impl Expr {
       Self::Literal( literal )
         => visitor.visit_literal( literal ),
       Self::Unary( op, expr )
-        => visitor.visit_unary( op, expr.visit( visitor )? )
+        => visitor.visit_unary( op, expr.visit( visitor )? ),
+      Self::Var( op )
+        => visitor.visit_var( op )
     }
   }
 
@@ -78,6 +86,10 @@ impl<'str> ExprFormatter<'str> {
 
 impl<'str> ExprVisitor<String> for ExprFormatter<'str> {
 
+  fn visit_assignment( &self, var: &Token, right: String ) -> Result<String, Error> {
+      Ok( format!( "{} = {}", var.get_lexeme( self.db ), right ) )
+  }
+
   fn visit_binary( &self, left: String, op: &Token, right: String ) -> Result<String, Error> {
     Ok( format!( "{} {} {}", left, op.get_lexeme( self.db ), right ) )
   }
@@ -88,15 +100,20 @@ impl<'str> ExprVisitor<String> for ExprFormatter<'str> {
 
   fn visit_literal( &self, literal: &Token ) -> Result<String, Error> {
     Ok(
-      match literal.get_token_type() {
-        TokenType::String( s ) => format!( "\"{}\"", self.db.gets( *s ) ),
-                                            _ => format!( "{}", literal.get_lexeme( self.db ) )
+      match literal.get_type() {
+        TokenType::String( s )
+          => format!( "\"{}\"", self.db.gets( *s ) ),
+        _ => format!( "{}", literal.get_lexeme( self.db ) )
       }
     )
   }
 
   fn visit_unary( &self, op: &Token, expr: String ) -> Result<String, Error> {
     Ok( format!( "{}{}", op.get_lexeme( self.db ), expr ) )
+  }
+
+  fn visit_var( &self, var: &Token ) -> Result<String, Error> {
+      Ok( format!( "{}", var.get_lexeme( self.db ) ) )
   }
 
 }

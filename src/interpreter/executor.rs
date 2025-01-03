@@ -7,14 +7,13 @@
 // use //
 /////////
 
-use std::collections::HashMap;
-
 use crate::interpreter::error::*;
 use crate::interpreter::stmt::*;
 use crate::interpreter::eval::*;
 use crate::interpreter::decl::*;
 use crate::interpreter::token::*;
 use crate::interpreter::env::*;
+use crate::interpreter::expr::*;
 
 use crate::util::*;
 
@@ -25,7 +24,7 @@ use crate::util::*;
 
 pub struct Executor<'str> {
   db: &'str mut StringManager,
-  env: Env,
+  env: Box<Env>,
   had_error: bool
 }
 
@@ -34,7 +33,7 @@ impl<'str> Executor<'str> {
   pub fn new( db: &'str mut StringManager ) -> Executor<'str> {
     Executor{
       db,
-      env: Env::new(),
+      env: Env::create_global(),
       had_error: false,
     }  
   }
@@ -77,7 +76,7 @@ impl<'str> Executor<'str> {
     let result = self.eval( decl )?;
     match decl {
 
-      // declaration statement
+      // statement declaration
       Decl::Stmt( stmt ) =>
         match stmt {
 
@@ -88,21 +87,46 @@ impl<'str> Executor<'str> {
           },
 
           // expression statement
-          Stmt::Expr( _ ) => Ok( result )
+          Stmt::Expr( expr ) =>
+            match expr {
+              Expr::Assignment( var, rhs ) => self.execute_assignment_expr( var, rhs, result ),
+              _ => Ok( result )
+            }
         },
       
       // variable declaration
-      Decl::Var( t, _ ) => {
-        let var_key = self.db.puts( &t.get_lexeme( self.db ).to_string() );
+      Decl::Var( var, _ ) => {
+        let key = var.get_key();
 
         // error on redefinition
-        if self.env.contains_key( &var_key ) {
-          return Err( self.make_error( t, "This variable is already in use.".to_string() ) );
+        if self.env.has_var( key ) {
+          return Err( self.make_error( var, "This variable is already in use.".to_string() ) );
         }
 
-        self.env.insert( var_key, result.clone() );
+        self.env.create_var( key, result.clone() );
         Ok( result )
       }
+    }
+  }
+
+  fn execute_assignment_expr( &mut self, var: &Token, rhs: &Expr, result: Eval ) -> EvalResult {
+
+    // rhs might be a nested assignment expression
+    match rhs {
+      Expr::Assignment( nested_var, nested_rhs ) => {
+        self.execute_assignment_expr( nested_var, nested_rhs, result.clone() )?;
+      },
+      _ => ()
+    }
+
+    // check variable has been declared
+    let key = var.get_key();
+    if self.env.has_var( key ) {
+      self.env.write_var( key, result.clone() );
+      Ok( result )
+    }
+    else {
+      Err( self.make_error( var, "Undeclared variable.".to_string() ) )
     }
   }
 
