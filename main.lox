@@ -1,24 +1,26 @@
+var a = "global a";
+var b = "global b";
+var c = "global c";
+{
+  var a = "outer a";
+  var b = "outer b";
+  {
+    var a = "inner a";
+    print a;
+    print b;
+    print c;
+  }
+  print a;
+  print b;
+  print c;
+}
+print a;
+print b;
+print c;
 
 
-//var 3 = nil;
-var pi = 3.14;
-var tau = "Hello ";
-var sigma = "world!";
-
-gamma = sigma;
-
-var beta = tau + sigma;
-
-
-print beta;
-
-
-
-
-
-//print pi;
-//print tau;
-//print sigma;
-
-
-//print 1000000 * 462.0012345456 / ( -3.423 + 893 * pi );
+a = 1;
+{
+  a = nil + 2;
+  print a;
+}

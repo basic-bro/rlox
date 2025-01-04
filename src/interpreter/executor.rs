@@ -63,6 +63,7 @@ impl<'str> Executor<'str> {
     match decl {
       Decl::Stmt( Stmt::Expr ( expr ) ) => expr.eval( self.db, &self.env ),
       Decl::Stmt( Stmt::Print( expr ) ) => expr.eval( self.db, &self.env ),
+      Decl::Stmt( Stmt::Block( _decls, _ ) ) => Ok( Eval::Nil ),
       Decl::Var( _, init ) => {
         match init {
           Some( expr ) => expr.eval( self.db, &self.env ),
@@ -82,7 +83,7 @@ impl<'str> Executor<'str> {
 
           // print statement
           Stmt::Print( _ ) => {
-            print!( "{}", result );
+            print!( "{}\n", result );
             Ok( result )
           },
 
@@ -91,7 +92,36 @@ impl<'str> Executor<'str> {
             match expr {
               Expr::Assignment( var, rhs ) => self.execute_assignment_expr( var, rhs, result ),
               _ => Ok( result )
+            },
+
+          // block statement
+          Stmt::Block( decls, line ) => {
+            let mut final_result = Eval::Nil;
+
+
+            // print!( "\nBefore Env::enclose_new()" );
+            // self.env.debug_print( self.db );
+
+            self.env = Env::enclose_new( &self.env, *line );
+
+            // print!( "\nAfter Env::enclose_new()" );
+            // self.env.debug_print( self.db );
+
+
+            for decl in decls {
+              final_result = self.execute_decl( decl )?;
             }
+
+            // print!( "\nBefore Env::drop_enclosed()" );
+            // self.env.debug_print( self.db );
+
+            self.env = Env::drop_enclosed( &self.env );
+
+            // print!( "\nAfter Env::drop_enclosed()" );
+            // self.env.debug_print( self.db );
+
+            Ok( final_result )
+          }
         },
       
       // variable declaration
@@ -99,7 +129,7 @@ impl<'str> Executor<'str> {
         let key = var.get_key();
 
         // error on redefinition
-        if self.env.has_var( key ) {
+        if self.env.has_var_here( key ) {
           return Err( self.make_error( var, "This variable is already in use.".to_string() ) );
         }
 

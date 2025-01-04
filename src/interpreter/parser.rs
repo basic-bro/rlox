@@ -47,7 +47,7 @@ impl<'str> Parser<'str> {
   pub fn parse( &mut self, tokens: Vec<Token> ) -> ( Vec<Decl>, bool ) {
     self.restart( tokens );
     while !self.is_at_end() {
-      if *self.peek().get_type() == TokenType::Eof {
+      if self.peek_type() == TokenType::Eof {
         break;
       }
       let e = self.parse_declaration();
@@ -106,7 +106,7 @@ impl<'str> Parser<'str> {
 
     // ( "=" expression )?    [ aka tail ]
     let tail: Option<Expr> = 
-      if *self.peek().get_type() == TokenType::Equal {
+      if self.peek_type() == TokenType::Equal {
         self.pop();
         let expr = self.parse_expression()?;
         Some( expr )
@@ -115,7 +115,7 @@ impl<'str> Parser<'str> {
       };
 
     // ";"
-    if *self.peek().get_type() != TokenType::Semicolon {
+    if self.peek_type() != TokenType::Semicolon {
       return Err( self.make_error( format!( "Expected ';' here." ) ) )
     }
     self.pop();
@@ -124,48 +124,74 @@ impl<'str> Parser<'str> {
   }
 
   fn parse_identifier( &mut self ) -> Result<Token, Error> {
-    match *self.peek().get_type() {
+    match self.peek_type() {
       TokenType::Identifer( _ ) => { Ok( *self.pop() ) },
       _ => Err( self.make_error( "Expected an identifier here.".to_string() ) )
     }
   }
 
-  // statement => print_statement | expr_statement
-  // print_statement => "print" expression ";"
-  // expr_statement => expression ";"
+  // statement => print_statement | expr_statement | block_statement
   fn parse_statement( &mut self ) -> ParseStmtResult {
+    match self.peek_type() {
+      TokenType::Print => self.parse_print_statement(),
+      TokenType::LeftBrace => self.parse_block_statement(),
+      _ => self.parse_expr_statement()
+    }
+  }
 
-    // print_statement
-    if *self.peek().get_type() == TokenType::Print {
+  // print_statement => "print" expression ";"
+  fn parse_print_statement( &mut self ) -> ParseStmtResult {
+    
+    // consume "print"
+    self.pop();
 
-      // consume "print"
+    // expression
+    let expr = self.parse_expression()?;
+    
+    // ";"
+    if self.peek_type() != TokenType::Semicolon {
+      return Err( self.make_error( format!( "Expected ';' here." ) ) )
+    }
+    self.pop();
+
+    // success
+    Ok( Stmt::Print( expr ) )
+  }
+
+  // block_statement => "{" declaration* "}"
+  fn parse_block_statement( &mut self ) -> ParseStmtResult {
+    
+    // consume "{"
+    let line = self.pop().get_line();
+
+    // declarations
+    let mut decls: Vec<Decl> = Vec::new();
+    while self.peek_type() != TokenType::RightBrace && !self.is_at_end() {
+      decls.push( self.parse_declaration()? );
+    }
+
+    // "}"
+    if self.peek_type() != TokenType::RightBrace && !self.is_at_end() {
+      Err( self.make_error( "Expected '}' here.".to_string() ) )
+    }
+    else {
       self.pop();
+      Ok( Stmt::Block( decls, line ) )
+    }
+  }
 
-      // expression
-      let expr = self.parse_expression()?;
-      
-      // ";"
-      if *self.peek().get_type() != TokenType::Semicolon {
-        return Err( self.make_error( format!( "Expected ';' here." ) ) )
-      }
-      self.pop();
-
-      // success
-      Ok( Stmt::Print( expr ) )
-
-    // expr_statement
-    } else {
-
-      // expression
-      let expr = self.parse_expression()?;
+  // expr_statement => expression ";"
+  fn parse_expr_statement( &mut self ) -> ParseStmtResult {
+    
+    // expression
+    let expr = self.parse_expression()?;
             
-      // ";"
-      if *self.peek().get_type() != TokenType::Semicolon && !self.is_at_end() {
-        return Err( self.make_error( format!( "Expected ';' here." ) ) )
-      }
+    // ";"
+    if self.peek_type() != TokenType::Semicolon && !self.is_at_end() {
+      Err( self.make_error( format!( "Expected ';' here." ) ) )
+    }
+    else {
       self.pop();
-
-      // success
       Ok( Stmt::Expr( expr ) )
     }
   }
@@ -180,7 +206,7 @@ impl<'str> Parser<'str> {
 
     let expr = self.parse_logical_or()?;
 
-    if *self.peek().get_type() == TokenType::Equal {
+    if self.peek_type() == TokenType::Equal {
       let equal = *self.pop();
       let value = self.parse_assignment()?;
       match expr {
@@ -299,7 +325,7 @@ impl<'str> Parser<'str> {
     if self.is_grouping() {
       self.pop();
       let expr = Expr::Grouping( Box::new( self.parse_expression()? ) );
-      if *self.peek().get_type() != TokenType::RightParen {
+      if self.peek_type() != TokenType::RightParen {
         Err( self.make_error( format!( "Expected ')' here." ) ) )
       } else {
         self.pop();
@@ -325,19 +351,19 @@ impl<'str> Parser<'str> {
   }
 
   fn is_var_decl( &self ) -> bool {
-    *self.peek().get_type() == TokenType::Var
+    self.peek_type() == TokenType::Var
   }
 
   fn is_logical_or( &self ) -> bool {
-    *self.peek().get_type() == TokenType::Or
+    self.peek_type() == TokenType::Or
   }
 
   fn is_logical_and( &self ) -> bool {
-    *self.peek().get_type() == TokenType::And
+    self.peek_type() == TokenType::And
   }
 
   fn is_equality( &self ) -> bool {
-    match self.peek().get_type() {
+    match self.peek_type() {
       TokenType::BangEqual
       | TokenType::EqualEqual
         => true,
@@ -346,7 +372,7 @@ impl<'str> Parser<'str> {
   }
 
   fn is_comparison( &self ) -> bool {
-    match self.peek().get_type() {
+    match self.peek_type() {
       TokenType::Greater
       | TokenType::GreaterEqual
       | TokenType::Less
@@ -357,7 +383,7 @@ impl<'str> Parser<'str> {
   }
 
   fn is_term( &self ) -> bool {
-    match self.peek().get_type() {
+    match self.peek_type() {
       TokenType::Minus
       | TokenType::Plus
         => true,
@@ -366,7 +392,7 @@ impl<'str> Parser<'str> {
   }
 
   fn is_factor( &self ) -> bool {
-    match self.peek().get_type() {
+    match self.peek_type() {
       TokenType::Slash
       | TokenType::Star
         => true,
@@ -375,7 +401,7 @@ impl<'str> Parser<'str> {
   }
 
   fn is_unary( &self ) -> bool {
-    match self.peek().get_type() {
+    match self.peek_type() {
       TokenType::Bang
         | TokenType::Minus    
         => true,
@@ -384,11 +410,11 @@ impl<'str> Parser<'str> {
   }
 
   fn is_grouping( &self ) -> bool {
-    *self.peek().get_type() == TokenType::LeftParen
+    self.peek_type() == TokenType::LeftParen
   }
 
   fn is_primary( &self ) -> bool {
-    match self.peek().get_type() {
+    match self.peek_type() {
       TokenType::False
         | TokenType::True
         | TokenType::Nil
@@ -414,6 +440,10 @@ impl<'str> Parser<'str> {
     else {
       self.tokens.get( self.current ).unwrap()
     }
+  }
+
+  fn peek_type( &self ) -> TokenType {
+    *self.peek().get_type()
   }
 
   fn previous( &self ) -> &Token {

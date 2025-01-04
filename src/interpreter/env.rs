@@ -17,10 +17,11 @@ use crate::interpreter::eval::*;
 // public interface //
 //////////////////////
 
-// 'enc == enclosing scope
+#[derive(Clone)]
 pub struct Env {
   db: HashMap<StringKey, Eval>,
-  parent: Option<Box<Env>>
+  parent: Option<Box<Env>>,
+  line: i32
 }
 
 impl Env {
@@ -29,19 +30,28 @@ impl Env {
     Box::new(
       Env {
         db: HashMap::new(),
-        parent: None
+        parent: None,
+        line: 0
       }
     )
   }
 
-  pub fn enclose_new( parent: Box<Env> ) -> Box<Env> {
+  pub fn enclose_new( parent: &Box<Env>, line: i32 ) -> Box<Env> {
     Box::new(
       Env {
         db: HashMap::new(),
-        parent: Some( parent )
+        parent: Some( parent.clone() ),
+        line
       }
     )
   }
+
+  pub fn drop_enclosed( child: &Box<Env> ) -> Box<Env> {
+    let result = child.get_parent().clone();
+    let _ = child;
+    result
+  }
+
 
   pub fn is_global( &self ) -> bool {
     self.parent.is_none()
@@ -75,8 +85,8 @@ impl Env {
   }
 
   pub fn create_var( &mut self, key: StringKey, value: Eval ) {
-    assert!( !self.has_var( key ),
-      "Internal error: Known/duplicate key. [ The caller of add_var() assumes responsibility for verifying that a key is unique."
+    assert!( !self.has_var_here( key ),
+      "Internal error: Known/duplicate key. [ The caller of create_var() assumes responsibility for verifying that a key is unique. ]"
     );
     self.db.insert( key, value );
   }
@@ -99,6 +109,20 @@ impl Env {
 
   fn get_parent_mut( &mut self ) -> &mut Box<Env> {
     self.parent.as_mut().expect( "Internal error: No parent. [ The caller of get_parent_mut() assumes responsibility for verifying that a parent exists." )
+  }
+
+  fn debug_print_here( &self, sm: &StringManager ) {
+    print!( "\nEnv beginning on line {} has {} entries:", self.line, self.db.len() );
+    for ( key, value ) in &self.db {
+      print!( "\n  {} = {}", sm.gets( *key ), value );
+    }
+  }
+
+  pub fn debug_print( &self, sm: &StringManager ) {
+    self.debug_print_here( sm );
+    if !self.is_global() {
+      self.get_parent().debug_print( sm );
+    }
   }
 
 }
