@@ -21,7 +21,7 @@ pub enum TokenType {
   Bang, BangEqual, Equal, EqualEqual,
   Greater, GreaterEqual, Less, LessEqual,
 
-  Identifer( StringKey ), String( StringKey ), Number( StringKey ),
+  Identifier( StringKey ), String( StringKey ), Number( StringKey ),
 
   And, Class, Else, False, Fun, For, If, Nil, Or,
   Print, Return, Super, This, True, Var, While,
@@ -31,7 +31,7 @@ pub enum TokenType {
 
 impl TokenType {
 
-  pub fn get_lexeme<'str>( &self, db: &'str StringManager ) -> &'str str {
+  pub fn get_lexeme<'str>( &self, sm: &'str StringManager ) -> &'str str {
     match self {
       Self::LeftParen => "(",
       Self::RightParen => ")",
@@ -52,9 +52,9 @@ impl TokenType {
       Self::GreaterEqual => ">=",
       Self::Less => "<",
       Self::LessEqual => "<=",
-      Self::Identifer( id ) => db.gets( *id ),
-      Self::String( s ) => db.gets( *s ),
-      Self::Number( f ) => db.gets( *f ),
+      Self::Identifier( id ) => sm.gets( *id ),
+      Self::String( s ) => sm.gets( *s ),
+      Self::Number( f ) => sm.gets( *f ),
       Self::And => "and",
       Self::Class => "class",
       Self::Else => "else",
@@ -77,7 +77,7 @@ impl TokenType {
 
   pub fn get_key( &self ) -> StringKey {
     match self {
-      Self::Identifer( identifier ) => *identifier,
+      Self::Identifier( identifier ) => *identifier,
       Self::String( string ) => *string,
       Self::Number( number ) => *number,
       _ => panic!( "The caller of get_key() assumes responsibility for checking that the given token has a key." )
@@ -101,8 +101,8 @@ impl Token {
     }
   }
 
-  pub fn get_lexeme<'str>( &self, db: &'str StringManager ) -> &'str str {
-    self.token_type.get_lexeme( db )
+  pub fn get_lexeme<'str>( &self, sm: &'str StringManager ) -> &'str str {
+    self.token_type.get_lexeme( sm )
   }
 
   pub fn get_type( &self ) -> &TokenType {
@@ -111,13 +111,6 @@ impl Token {
 
   pub fn get_line( &self ) -> i32 {
     self.line
-  }
-
-  pub fn is_identifier( &self ) -> bool {
-    match self.token_type {
-      TokenType::Identifer( _ ) => true,
-      _ => false
-    }
   }
 
   pub fn get_key( &self ) -> StringKey {

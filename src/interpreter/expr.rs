@@ -57,28 +57,28 @@ impl Expr {
     }
   }
 
-  pub fn to_string( &self, db: &StringManager ) -> String {
-    match self.visit( &ExprFormatter::new( db ) ) {
+  pub fn to_string( &self, sm: &StringManager ) -> String {
+    match self.visit( &ExprFormatter::new( sm ) ) {
       Ok( s ) => s,
       Err( error ) => error.msg
     }
   }
 
-  pub fn eval( &self, db: &StringManager, env: &Env ) -> EvalResult {
-    self.visit( &ExprEvaluator::new( db, env ) )
+  pub fn eval( &self, sm: &StringManager, env: &Env ) -> EvalResult {
+    self.visit( &ExprEvaluator::new( sm, env ) )
   }
   
 }
 
 pub struct ExprFormatter<'str> {
-  db: &'str StringManager
+  sm: &'str StringManager
 }
 
 impl<'str> ExprFormatter<'str> {
 
-  pub fn new( db: &'str StringManager ) -> ExprFormatter<'str> {
+  pub fn new( sm: &'str StringManager ) -> ExprFormatter<'str> {
     ExprFormatter {
-      db
+      sm
     }
   }
 
@@ -87,11 +87,11 @@ impl<'str> ExprFormatter<'str> {
 impl<'str> ExprVisitor<String> for ExprFormatter<'str> {
 
   fn visit_assignment( &self, var: &Token, right: String ) -> Result<String, Error> {
-      Ok( format!( "{} = {}", var.get_lexeme( self.db ), right ) )
+      Ok( format!( "{} = {}", var.get_lexeme( self.sm ), right ) )
   }
 
   fn visit_binary( &self, left: String, op: &Token, right: String ) -> Result<String, Error> {
-    Ok( format!( "{} {} {}", left, op.get_lexeme( self.db ), right ) )
+    Ok( format!( "{} {} {}", left, op.get_lexeme( self.sm ), right ) )
   }
 
   fn visit_grouping( &self, expr: String ) -> Result<String, Error> {
@@ -102,18 +102,18 @@ impl<'str> ExprVisitor<String> for ExprFormatter<'str> {
     Ok(
       match literal.get_type() {
         TokenType::String( s )
-          => format!( "\"{}\"", self.db.gets( *s ) ),
-        _ => format!( "{}", literal.get_lexeme( self.db ) )
+          => format!( "\"{}\"", self.sm.gets( *s ) ),
+        _ => format!( "{}", literal.get_lexeme( self.sm ) )
       }
     )
   }
 
   fn visit_unary( &self, op: &Token, expr: String ) -> Result<String, Error> {
-    Ok( format!( "{}{}", op.get_lexeme( self.db ), expr ) )
+    Ok( format!( "{}{}", op.get_lexeme( self.sm ), expr ) )
   }
 
   fn visit_var( &self, var: &Token ) -> Result<String, Error> {
-      Ok( format!( "{}", var.get_lexeme( self.db ) ) )
+      Ok( format!( "{}", var.get_lexeme( self.sm ) ) )
   }
 
 }

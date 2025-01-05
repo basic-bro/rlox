@@ -111,7 +111,7 @@ impl Interpreter {
 
     // executor
     let mut executor = Executor::new( &mut self.str_lookup );
-    executor.execute( decls )
+    executor.exec( decls )
   }
   
 }

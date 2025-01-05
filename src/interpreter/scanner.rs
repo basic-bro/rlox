@@ -16,7 +16,7 @@ use crate::interpreter::token::*;
 //////////////////////
 
 pub struct Scanner<'str> {
-  db: &'str mut StringManager,
+  sm: &'str mut StringManager,
   src: String,
   tokens: Vec<Token>,
   start: usize,
@@ -49,9 +49,9 @@ impl<'str> Scanner<'str> {
     }
   }
 
-  pub fn new( db: &'str mut StringManager ) -> Scanner<'str> {
+  pub fn new( sm: &'str mut StringManager ) -> Scanner<'str> {
     Scanner {
-      db,
+      sm,
       src: "".to_string(),
       tokens: vec![],
       start: 0,
@@ -146,7 +146,7 @@ impl<'str> Scanner<'str> {
     self.advance();
 
     let value = substring( &self.src, self.start + 1, self.current - self.start - 2 ).unwrap();
-    let key = self.db.puts( value );
+    let key = self.sm.puts( value );
     self.add_token( TokenType::String( key ) );
   }
 
@@ -163,7 +163,7 @@ impl<'str> Scanner<'str> {
     }
 
     let value = substring( &self.src, self.start, self.current - self.start ).unwrap();
-    let key = self.db.puts( value );
+    let key = self.sm.puts( value );
     self.add_token( TokenType::Number( key ) );
   }
 
@@ -173,11 +173,11 @@ impl<'str> Scanner<'str> {
     }
 
     let value = substring( &self.src, self.start, self.current - self.start ).unwrap();
-    let key = self.db.puts( value );
+    let key = self.sm.puts( value );
 
     match Scanner::keyword( value ) {
       Some( tt ) => self.add_token( tt ),
-      None => self.add_token( TokenType::Identifer( key ) ),
+      None => self.add_token( TokenType::Identifier( key ) ),
     }
   }
 

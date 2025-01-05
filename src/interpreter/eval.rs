@@ -70,15 +70,15 @@ impl Display for Eval {
 pub type EvalResult = Result<Eval, Error>;
 
 pub struct ExprEvaluator<'str, 'env> {
-  db: &'str StringManager,
+  sm: &'str StringManager,
   env: &'env Env
 }
 
 impl<'str, 'env> ExprEvaluator<'str, 'env> {
 
-  pub fn new( db: &'str StringManager, env: &'env Env ) -> ExprEvaluator<'str, 'env> {
+  pub fn new( sm: &'str StringManager, env: &'env Env ) -> ExprEvaluator<'str, 'env> {
     ExprEvaluator {
-      db,
+      sm,
       env
     }
   }
@@ -132,7 +132,7 @@ impl<'str, 'env> ExprVisitor<Eval> for ExprEvaluator<'str, 'env> {
                   
                   // error 
                   _ => Err( Error::from_token( op,
-                    "Unknown binary operation on type Number.".to_string(), self.db ) )
+                    "Unknown binary operation on type Number.".to_string(), self.sm ) )
                 },
           
           // binary operations on StringLiterals
@@ -144,7 +144,7 @@ impl<'str, 'env> ExprVisitor<Eval> for ExprEvaluator<'str, 'env> {
 
                   // error
                   _ => Err( Error::from_token( op,
-                    "Unknown binary operation on type String.".to_string(), self.db ) )
+                    "Unknown binary operation on type String.".to_string(), self.sm ) )
                 },
           
           // binary operations on Bools
@@ -157,7 +157,7 @@ impl<'str, 'env> ExprVisitor<Eval> for ExprEvaluator<'str, 'env> {
 
                   // error
                   _ => Err( Error::from_token( op,
-                    "Unknown binary operation on type Bool.".to_string(), self.db ) )
+                    "Unknown binary operation on type Bool.".to_string(), self.sm ) )
             },
 
           // binary operation on Nils
@@ -170,13 +170,13 @@ impl<'str, 'env> ExprVisitor<Eval> for ExprEvaluator<'str, 'env> {
 
                 // error
                 _ => Err( Error::from_token( op,
-                  "Unknown binary operation on type Nil.".to_string(), self.db ) )
+                  "Unknown binary operation on type Nil.".to_string(), self.sm ) )
             }
 
           // error
           _ => Err( Error::from_token( op,
             format!( "Unknown binary operation on the types provided. (The types are {} and {}, respectively.)",
-              left.get_type_name(), right.get_type_name() ), self.db ) )
+              left.get_type_name(), right.get_type_name() ), self.sm ) )
         }
     }
   }
@@ -187,13 +187,13 @@ impl<'str, 'env> ExprVisitor<Eval> for ExprEvaluator<'str, 'env> {
 
   fn visit_literal( &self, literal: &Token ) -> Result<Eval, Error> {
     match literal.get_type() {
-      TokenType::String( s ) => Ok( Eval::StringLiteral( self.db.gets( *s ).to_string() ) ),
-      TokenType::Number( s ) => Ok( Eval::Number( self.db.gets( *s ).parse::<f64>().unwrap() ) ),
+      TokenType::String( s ) => Ok( Eval::StringLiteral( self.sm.gets( *s ).to_string() ) ),
+      TokenType::Number( s ) => Ok( Eval::Number( self.sm.gets( *s ).parse::<f64>().unwrap() ) ),
       TokenType::True => Ok( Eval::Bool( true ) ),
       TokenType::False => Ok( Eval::Bool( false ) ),
       TokenType::Nil => Ok( Eval::Nil ),
       _ => Err( Error::from_token( literal,
-        "Internal error: evaluation of this expression is not implemented.".to_string(), self.db ) )
+        "Internal error: evaluation of this expression is not implemented.".to_string(), self.sm ) )
     }
   }
 
@@ -203,26 +203,26 @@ impl<'str, 'env> ExprVisitor<Eval> for ExprEvaluator<'str, 'env> {
       TokenType::Minus => match expr {
         Eval::Number( x ) => Ok( Eval::Number( -x ) ),
         _ => Err( Error::from_token( op,
-          format!( "Unary '-' cannot be applied to a value of type {}.", expr.get_type_name() ), self.db ) )
+          format!( "Unary '-' cannot be applied to a value of type {}.", expr.get_type_name() ), self.sm ) )
       },
       _ => Err( Error::from_token( op,
-        "Internal error: evaluation of this unary operator is not implemented.".to_string(), self. db ) )
+        "Internal error: evaluation of this unary operator is not implemented.".to_string(), self. sm ) )
     }
   }
 
   fn visit_var( &self, var: &Token ) -> Result<Eval, Error> {
     match var.get_type() {
-      TokenType::Identifer( id ) => {
+      TokenType::Identifier( id ) => {
 
         // error on undeclared variable
         if !self.env.has_var( *id ) {
-          Err( Error::from_token( var, "Undeclared variable.".to_string(), self.db ) )
+          Err( Error::from_token( var, "Undeclared variable.".to_string(), self.sm ) )
         } else {
           Ok( self.env.read_var( *id ).clone() )
         }
       }
       _ => Err( Error::from_token( var,
-        "Internal error: evaluation of this expression is not implemented.".to_string(), self. db ) )
+        "Internal error: evaluation of this expression is not implemented.".to_string(), self. sm ) )
     }
   }
   

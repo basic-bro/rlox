@@ -23,26 +23,26 @@ use crate::util::*;
 //////////////////////
 
 pub struct Executor<'str> {
-  db: &'str mut StringManager,
+  sm: &'str mut StringManager,
   env: Box<Env>,
   had_error: bool
 }
 
 impl<'str> Executor<'str> {
 
-  pub fn new( db: &'str mut StringManager ) -> Executor<'str> {
+  pub fn new( sm: &'str mut StringManager ) -> Executor<'str> {
     Executor{
-      db,
+      sm,
       env: Env::create_global(),
       had_error: false,
     }  
   }
 
-  pub fn execute( &mut self, decls: Vec<Decl> ) -> ( Eval, bool ) {
+  pub fn exec( &mut self, decls: Vec<Decl> ) -> ( Eval, bool ) {
     self.restart();
     let mut retval = Eval::Nil;
     for decl in decls {
-      match self.execute_decl( &decl ) {
+      match self.exec_decl( &decl ) {
         Ok( val ) => retval = val,
         Err( error ) => self.emit_error( &error )
       }
@@ -59,73 +59,15 @@ impl<'str> Executor<'str> {
     self.had_error = false;
   }
 
-  fn eval( &self, decl: &Decl ) -> EvalResult {
-    match decl {
-      Decl::Stmt( Stmt::Expr ( expr ) ) => expr.eval( self.db, &self.env ),
-      Decl::Stmt( Stmt::Print( expr ) ) => expr.eval( self.db, &self.env ),
-      Decl::Stmt( Stmt::Block( _decls, _ ) ) => Ok( Eval::Nil ),
-      Decl::Var( _, init ) => {
-        match init {
-          Some( expr ) => expr.eval( self.db, &self.env ),
-          None => Ok( Eval::Nil )
-        }
-      }
-    }
-  }
-
-  fn execute_decl( &mut self, decl: &Decl ) -> EvalResult {
-    let result = self.eval( decl )?;
+  fn exec_decl( &mut self, decl: &Decl ) -> EvalResult {
+    //let result = self.eval_decl( decl )?;
     match decl {
 
       // statement declaration
-      Decl::Stmt( stmt ) =>
-        match stmt {
-
-          // print statement
-          Stmt::Print( _ ) => {
-            print!( "{}\n", result );
-            Ok( result )
-          },
-
-          // expression statement
-          Stmt::Expr( expr ) =>
-            match expr {
-              Expr::Assignment( var, rhs ) => self.execute_assignment_expr( var, rhs, result ),
-              _ => Ok( result )
-            },
-
-          // block statement
-          Stmt::Block( decls, line ) => {
-            let mut final_result = Eval::Nil;
-
-
-            // print!( "\nBefore Env::enclose_new()" );
-            // self.env.debug_print( self.db );
-
-            self.env = Env::enclose_new( &self.env, *line );
-
-            // print!( "\nAfter Env::enclose_new()" );
-            // self.env.debug_print( self.db );
-
-
-            for decl in decls {
-              final_result = self.execute_decl( decl )?;
-            }
-
-            // print!( "\nBefore Env::drop_enclosed()" );
-            // self.env.debug_print( self.db );
-
-            self.env = Env::drop_enclosed( &self.env );
-
-            // print!( "\nAfter Env::drop_enclosed()" );
-            // self.env.debug_print( self.db );
-
-            Ok( final_result )
-          }
-        },
+      Decl::Stmt( stmt ) => self.exec_stmt( stmt ),
       
       // variable declaration
-      Decl::Var( var, _ ) => {
+      Decl::Var( var, init ) => {
         let key = var.get_key();
 
         // error on redefinition
@@ -133,20 +75,56 @@ impl<'str> Executor<'str> {
           return Err( self.make_error( var, "This variable is already in use.".to_string() ) );
         }
 
+        // evaluate initialiser
+        let result = match init {
+          Some( expr ) => expr.eval( self.sm, &self.env ),
+          None => Ok( Eval::Nil )
+        }?;
+
+        // create variable
         self.env.create_var( key, result.clone() );
         Ok( result )
       }
     }
   }
 
-  fn execute_assignment_expr( &mut self, var: &Token, rhs: &Expr, result: Eval ) -> EvalResult {
+  fn exec_stmt( &mut self, stmt: &Stmt ) -> EvalResult {
+    match stmt {
+      Stmt::Print( expr )
+        => self.exec_print_stmt( expr ),
+      Stmt::Expr( expr )
+        => self.exec_expr_stmt( expr ),
+      Stmt::Block( decls, line )
+        => self.exec_block_stmt( decls, line ),
+      Stmt::If( init, condition , then, else_)
+        => self.exec_if_stmt( init, condition, then, else_ ),
+      Stmt::While( init, condition , loop_ )
+        => self.exec_while_stmt( init, condition, loop_ ),
+      Stmt::For( init, condition , incr, body )
+        => self.exec_for_stmt( init, condition, incr, body )
+    }
+  }
+
+  fn exec_print_stmt( &mut self, expr: &Expr ) -> EvalResult {
+    let result = expr.eval( self.sm, &self.env )?;
+    print!( "{}\n", result );
+    Ok( result )
+  }
+
+  fn exec_expr_stmt( &mut self, expr: &Expr ) -> EvalResult {
+    let result = expr.eval( self.sm, &self.env )?;
+    if let Expr::Assignment( var, rhs ) = expr {
+      self.exec_assign_expr( var, rhs, result )
+    } else{
+      Ok( result )
+    } 
+  }
+
+  fn exec_assign_expr( &mut self, var: &Token, rhs: &Expr, result: Eval ) -> EvalResult {
 
     // rhs might be a nested assignment expression
-    match rhs {
-      Expr::Assignment( nested_var, nested_rhs ) => {
-        self.execute_assignment_expr( nested_var, nested_rhs, result.clone() )?;
-      },
-      _ => ()
+    if let Expr::Assignment( nested_var, nested_rhs ) = rhs {
+        self.exec_assign_expr( nested_var, nested_rhs, result.clone() )?;
     }
 
     // check variable has been declared
@@ -160,14 +138,200 @@ impl<'str> Executor<'str> {
     }
   }
 
+  fn exec_block_stmt( &mut self, decls: &Vec<Decl>, line: &i32 ) -> EvalResult {
+    let mut result = Eval::Nil;
+    self.enclose_new_scope( *line );
+    for decl in decls {
+      result = self.exec_decl( decl )?;
+    }
+    self.drop_enclosed_scope();
+    Ok( result )
+  }
+
+  fn exec_if_stmt(
+    &mut self,
+    init: &Option<CtrlFlowInit>,
+    condition: &Expr,
+    then: &Box<Stmt>,
+    else_: &Option<Box<Stmt>> ) -> EvalResult {
+
+    // initialiser if supplied
+    let mut has_scope = false;
+    if let Some( flow_init ) = init.as_ref() {
+      match flow_init {
+
+        // variable declaration
+        CtrlFlowInit::VarDecl( var_decl ) => {
+          let decl = var_decl.as_ref();
+          if let Decl::Var( var, _ ) = decl {
+            has_scope = true;
+            self.enclose_new_scope( var.get_line() );
+            self.exec_decl( decl )?;
+          } else {
+            panic!( "Internal error. The declaration in this if-statement initialiser is not a variable declaration." );
+          }
+        },
+
+        // expression statement
+        CtrlFlowInit::ExprStmt( expr_stmt ) => {
+          let stmt = expr_stmt.as_ref();
+          if let Stmt::Expr( expr ) = stmt {
+            self.exec_expr_stmt( expr )?;
+          } else {
+            panic!( "Internal error. The statement in this if-statement initialiser is not an expression statement." );
+          }
+        }
+      }
+    }
+
+    // run if-then-else
+    let result = if condition.eval( self.sm, &self.env )?.is_truthy() {
+      self.exec_stmt( then )?
+    } else if else_.is_some() {
+      self.exec_stmt( else_.as_ref().unwrap() )?
+    }
+    else {
+      Eval::Bool( false )
+    };
+
+    // tidy-up from declaration if required
+    if has_scope {
+      self.drop_enclosed_scope();
+    }
+
+    // success
+    Ok( result )
+
+  }
+
+  fn exec_while_stmt(
+    &mut self,
+    init: &Option<CtrlFlowInit>,
+    condition: &Expr,
+    body: &Box<Stmt> ) -> EvalResult {
+    
+    // init
+    let mut result = Eval::Nil;
+    
+    // initialiser if supplied
+    let mut has_scope = false;
+    if let Some( flow_init ) = init.as_ref() {
+      match flow_init {
+
+        // variable declaration
+        CtrlFlowInit::VarDecl( var_decl ) => {
+          let decl = var_decl.as_ref();
+          if let Decl::Var( var, _ ) = decl {
+            has_scope = true;
+            self.enclose_new_scope( var.get_line() );
+            result = self.exec_decl( decl )?;
+          } else {
+            panic!( "Internal error. The declaration in this while-statement initialiser is not a variable declaration." );
+          }
+        },
+
+        // expression statement
+        CtrlFlowInit::ExprStmt( expr_stmt ) => {
+          let stmt = expr_stmt.as_ref();
+          if let Stmt::Expr( expr ) = stmt {
+            result = self.exec_expr_stmt( expr )?;
+          } else {
+            panic!( "Internal error. The statement in this while-statement initialiser is not an expression statement." );
+          }
+        }
+      }
+    }
+
+    // run loop
+    while condition.eval( self.sm, &self.env )?.is_truthy() {
+      result = self.exec_stmt( body )?;
+    }
+
+    // tidy-up from declaration if required
+    if has_scope {
+      self.drop_enclosed_scope();
+    }
+
+    Ok( result )
+  }
+
+  fn exec_for_stmt( &mut self, init: &Option<CtrlFlowInit>, condition: &Option<Expr>, incr: &Option<Expr>, body: &Box<Stmt> ) -> EvalResult {
+
+    // init
+    let mut result = Eval::Nil;
+    
+    // initialiser if supplied
+    let mut has_scope = false;
+    if let Some( flow_init ) = init.as_ref() {
+      match flow_init {
+
+        // variable declaration
+        CtrlFlowInit::VarDecl( var_decl ) => {
+          let decl = var_decl.as_ref();
+          if let Decl::Var( var, _ ) = decl {
+            has_scope = true;
+            self.enclose_new_scope( var.get_line() );
+            result = self.exec_decl( decl )?;
+          } else {
+            panic!( "Internal error. The declaration in this for-statement initialiser is not a variable declaration." );
+          }
+        },
+
+        // expression statement
+        CtrlFlowInit::ExprStmt( expr_stmt ) => {
+          let stmt = expr_stmt.as_ref();
+          if let Stmt::Expr( expr ) = stmt {
+            result = self.exec_expr_stmt( expr )?;
+          } else {
+            panic!( "Internal error. The statement in this for-statement initialiser is not an expression statement." );
+          }
+        }
+      }
+    }
+
+    // run loop
+    loop {
+
+      // condition
+      if let Some( expr ) = condition {
+        if !expr.eval( self.sm, &self.env )?.is_truthy() {
+          break;
+        }
+      }
+
+      // body
+      result = self.exec_stmt( body.as_ref() )?;
+
+      // incr
+      if let Some( expr ) = incr {
+        result = self.exec_expr_stmt( expr )?;
+      }
+    }
+
+    // tidy-up from init if required
+    if has_scope {
+      self.drop_enclosed_scope();
+    }
+
+    Ok( result )
+  }
+
+
+  fn enclose_new_scope( &mut self, line: i32 ) {
+    self.env = Env::enclose_new( &self.env, line );
+  }
+
+  fn drop_enclosed_scope( &mut self ) {
+    self.env = Env::drop_enclosed( &self.env );
+  }
+
   fn make_error( &self, t: &Token, msg: String ) -> Error {
-    Error::from_token( t, msg, self.db )
+    Error::from_token( t, msg, self.sm )
   }
 
   fn emit_error( &mut self, error: &Error ) {
     eprintln!( "[line {}] Runtime error{}: {}", error.line, error.loc, error.msg );
     self.had_error = true;
   }
-
 
 }

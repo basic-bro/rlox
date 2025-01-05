@@ -16,20 +16,18 @@ use crate::interpreter::decl::*;
 //////////////////////
 
 #[derive(Clone)]
+pub enum CtrlFlowInit {
+  VarDecl( Box<Decl> ),
+  ExprStmt( Box<Stmt> )
+}
+
+
+#[derive(Clone)]
 pub enum Stmt {
   Expr( Expr ),
   Print( Expr ),
-  Block( Vec<Decl>, i32 )
-}
-
-impl Stmt {
-
-  pub fn get_expr( &self ) -> &Expr {
-    match self {
-      Stmt::Expr( expr ) => expr,
-      Stmt::Print( expr ) => expr,
-      Stmt::Block( _, _ ) => panic!( "Internal error: No Expr available. [ The caller of get_expr() assumes responsibility of checking that an Expr exists. ]" )
-    }
-  }
-
+  Block( /* decls: */ Vec<Decl>, /* line: */ i32 ),
+  If( /* init: */ Option<CtrlFlowInit>, /* condition: */ Expr, /* then: */ Box<Stmt>, /* else: */ Option<Box<Stmt>> ),
+  While( /* init: */ Option<CtrlFlowInit>, /* condition: */ Expr, /* body: */ Box<Stmt> ),
+  For( /* init: */ Option<CtrlFlowInit>, /* condition: */ Option<Expr>, /* incr: */ Option<Expr>, /* body: */ Box<Stmt> )
 }

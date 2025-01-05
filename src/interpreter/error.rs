@@ -24,18 +24,18 @@ pub struct Error {
 
 impl Error {
 
-  pub fn new( line: i32, loc: String, msg: String ) -> Error {
-    Error {
-      line,
-      loc,
-      msg
-    }
-  }
+  // pub fn new( line: i32, loc: String, msg: String ) -> Error {
+  //   Error {
+  //     line,
+  //     loc,
+  //     msg
+  //   }
+  // }
 
-  pub fn from_token( t: &Token, msg: String, db: &StringManager ) -> Error {
+  pub fn from_token( t: &Token, msg: String, sm: &StringManager ) -> Error {
     Error {
       line: t.get_line(),
-      loc: format!( " at '{}'", t.get_lexeme( db ) ),
+      loc: format!( " at '{}'", t.get_lexeme( sm ) ),
       msg
     }
   }
