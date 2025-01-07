@@ -83,13 +83,53 @@ impl<'str> Parser<'str> {
     self.had_error = false;
   }
 
-  // decl => var_decl | stmt
+  // decl => fun_decl | var_decl | stmt
   fn parse_decl( &mut self ) -> ParseDeclResult {
-    if self.is_var_decl() {
+    if self.is_fun_decl() {
+      Ok( self.parse_fun_decl()? )
+    }
+    else if self.is_var_decl() {
       Ok( self.parse_var_decl()? )
     } else {
       Ok( Decl::Stmt( self.parse_stmt()? ) )
     }
+  }
+
+  // fun_decl => "fun" id "(" parameters? ")" block_stmt
+  // parameters => id ( "," id )*
+  fn parse_fun_decl( &mut self ) -> ParseDeclResult {
+
+    // "fun"
+    self.pop();
+
+    // id
+    let fun_name = self.parse_id()?;
+
+    // "("
+    self.pop_assert( TokenType::LeftParen, " to open function parameter list." )?;
+
+    let mut params: Vec<Token> = vec![];
+    if !self.pop_if( TokenType::RightParen ) {
+
+      // one or more parameters: first
+      params.push( self.parse_id()? );
+
+      // the rest
+      while self.pop_if( TokenType::Comma ) {
+        params.push( self.parse_id()? );
+      }
+
+      // ")"
+      self.pop_assert( TokenType::RightParen, " to close function parameter list." )?;
+    } 
+
+    // block_stmt
+    self.peek_assert( TokenType::LeftBrace, " to begin function body." )?;
+    let block_stmt = self.parse_block_stmt()?;
+
+    // success
+    Ok( Decl::Fun( fun_name, params, block_stmt ) )
+
   }
 
   // var_decl => id ( "=" expr )? ";"
@@ -130,6 +170,7 @@ impl<'str> Parser<'str> {
   ///       | expr_stmt
   ///       | while_stmt
   ///       | for_stmt
+  ///       | return_stmt
   fn parse_stmt( &mut self ) -> ParseStmtResult {
     match self.peek_type() {
       TokenType::Print => self.parse_print_stmt(),
@@ -137,6 +178,7 @@ impl<'str> Parser<'str> {
       TokenType::If => self.parse_if_stmt(),
       TokenType::While => self.parse_while_stmt(),
       TokenType::For => self.parse_for_stmt(),
+      TokenType::Return => self.parse_return_stmt(),
       _ => self.parse_expr_stmt()
     }
   }
@@ -330,7 +372,25 @@ impl<'str> Parser<'str> {
     
   }
 
-  // expr  => assign
+  // return_stmt => "return" expr? ";"
+  fn parse_return_stmt( &mut self ) -> ParseStmtResult {
+
+    // "return"
+    self.pop();
+
+    // expr? ";"
+    let retval: Option<Expr> = if self.pop_if( TokenType::Semicolon ) {
+      None
+    } else {
+      let expr = self.parse_expr()?;
+      self.pop_assert( TokenType::Semicolon, " to complete the return statment." )?;
+      Some( expr )
+    };
+
+    Ok( Stmt::Return( retval ) )
+  }
+
+  // expr => assign
   fn parse_expr( &mut self ) -> ParseExprResult {
     self.parse_assign()
   }
@@ -445,13 +505,52 @@ impl<'str> Parser<'str> {
     return Ok( expr );
   }
   
-  // unary => ( ( "!" | "-" ) unary ) | grouping
+  // unary => ( ( "!" | "-" ) unary ) | call
   fn parse_unary( &mut self ) -> ParseExprResult {
     if self.is_unary() {
         Ok( Expr::Unary( *self.pop(), Box::new( self.parse_unary()? ) ) )
     } else {
-      self.parse_grouping()
+      self.parse_call()
     }
+  }
+
+  // call => grouping ( "(" arguments? ")" )* | grouping
+  fn parse_call( &mut self ) -> ParseExprResult {
+
+    let mut expr = self.parse_grouping()?;
+
+    // println!( "parse_call() before loop: expr = {}", expr.to_string( self.sm ) );
+
+    loop {
+      if self.pop_if( TokenType::LeftParen ) {
+        // println!( "parse_call() found '('" );
+        expr = self.parse_arguments( expr )?;
+        // println!( "parse_call() args = {}", expr.to_string( self.sm ) );
+      }
+      else {
+        break;
+      }
+    }
+
+    // println!( "parse_call() returning expr = {}", expr.to_string( self.sm ) );
+    Ok( expr )
+  }
+
+  fn parse_arguments( &mut self, callee: Expr ) -> ParseExprResult {
+
+    let mut args: Vec<Box<Expr>> = vec![];
+    if !self.pop_if( TokenType::RightParen ) {
+      loop {
+        args.push( Box::new( self.parse_expr()? ) );
+        if !self.pop_if( TokenType::Comma ) {
+          break;
+        }
+      }
+    }
+
+    let paren = *self.pop_assert( TokenType::RightParen, " to finish function call." )?;
+
+    Ok( Expr::Call( Box::new( callee ), paren, args ) )
   }
   
   // grouping => ( "(" expr ")" ) | primary
@@ -477,6 +576,10 @@ impl<'str> Parser<'str> {
     } else {
       Err( self.make_error( format!( "Expected a primary expression here." ) ) )
     }
+  }
+
+  fn is_fun_decl( &self ) -> bool {
+    self.peek_type() == TokenType::Fun
   }
 
   fn is_var_decl( &self ) -> bool {
@@ -580,6 +683,15 @@ impl<'str> Parser<'str> {
     }
   }
 
+  fn pop_if( &mut self, tt: TokenType ) -> bool {
+    if self.peek_type() == tt {
+      self.pop();
+      true
+    } else {
+      false
+    }
+  }
+
   fn peek( &self ) -> &Token {
     if self.is_at_end() {
       self.previous()
@@ -591,6 +703,15 @@ impl<'str> Parser<'str> {
 
   fn peek_type( &self ) -> TokenType {
     *self.peek().get_type()
+  }
+
+  fn peek_assert( &mut self, tt: TokenType, loc: &str ) -> Result<(), Error> {
+    if self.peek_type() != tt {
+      Err( self.make_error( format!( "Expected '{}'{}", tt.get_lexeme( self.sm ), loc ) ) )
+    }
+    else {
+      Ok( () )
+    }
   }
 
   fn previous( &self ) -> &Token {

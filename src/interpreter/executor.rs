@@ -24,7 +24,7 @@ use crate::util::*;
 
 pub struct Executor<'str> {
   sm: &'str mut StringManager,
-  env: Box<Env>,
+  env: RcMut<Env>,
   had_error: bool
 }
 
@@ -38,13 +38,22 @@ impl<'str> Executor<'str> {
     }  
   }
 
+  pub fn with_env( sm: &'str mut StringManager, env: RcMut<Env> ) -> Executor<'str> {
+    Executor {
+      sm,
+      env,
+      had_error: false
+    }
+  }
+
   pub fn exec( &mut self, decls: Vec<Decl> ) -> ( Eval, bool ) {
     self.restart();
     let mut retval = Eval::Nil;
     for decl in decls {
       match self.exec_decl( &decl ) {
         Ok( val ) => retval = val,
-        Err( error ) => self.emit_error( &error )
+        Err( EvalError::Error( error) ) => self.emit_error( &error ),
+        Err( EvalError::Return( _ ) ) => panic!( "EvalError::Abort should not make its way to here." )
       }
     }
     ( retval, self.had_error )
@@ -60,31 +69,11 @@ impl<'str> Executor<'str> {
   }
 
   fn exec_decl( &mut self, decl: &Decl ) -> EvalResult {
-    //let result = self.eval_decl( decl )?;
+    // println!( "Executing declaration: {:?}", decl );
     match decl {
-
-      // statement declaration
       Decl::Stmt( stmt ) => self.exec_stmt( stmt ),
-      
-      // variable declaration
-      Decl::Var( var, init ) => {
-        let key = var.get_key();
-
-        // error on redefinition
-        if self.env.has_var_here( key ) {
-          return Err( self.make_error( var, "This variable is already in use.".to_string() ) );
-        }
-
-        // evaluate initialiser
-        let result = match init {
-          Some( expr ) => expr.eval( self.sm, &self.env ),
-          None => Ok( Eval::Nil )
-        }?;
-
-        // create variable
-        self.env.create_var( key, result.clone() );
-        Ok( result )
-      }
+      Decl::Var( var, init ) => self.exec_var_decl( var, init ),
+      Decl::Fun( fun_name, params, body) => self.exec_fun_decl( fun_name, params, body )
     }
   }
 
@@ -95,14 +84,57 @@ impl<'str> Executor<'str> {
       Stmt::Expr( expr )
         => self.exec_expr_stmt( expr ),
       Stmt::Block( decls, line )
-        => self.exec_block_stmt( decls, line ),
+        => self.exec_block_stmt( decls, line, true ),
       Stmt::If( init, condition , then, else_)
         => self.exec_if_stmt( init, condition, then, else_ ),
       Stmt::While( init, condition , loop_ )
         => self.exec_while_stmt( init, condition, loop_ ),
       Stmt::For( init, condition , incr, body )
-        => self.exec_for_stmt( init, condition, incr, body )
+        => self.exec_for_stmt( init, condition, incr, body ),
+      Stmt::Return( expr )
+        => self.exec_return_stmt( expr )
     }
+  }
+
+  fn exec_var_decl( &mut self, var: &Token, init: &Option<Expr> ) -> EvalResult {
+    let key = var.get_key();
+
+    // error on redefinition
+    if self.env.view().has_var_here( key ) {
+      return Err( self.make_error( var, "This variable is already in use.".to_string() ) );
+    }
+
+    // evaluate initialiser
+    let result = match init {
+      Some( expr ) => expr.eval( self.sm, &self.env ),
+      None => Ok( Eval::Nil )
+    }?;
+
+    // create variable
+    self.env.view_mut().create_var( key, result.clone() );
+    Ok( result )
+  }
+
+  fn exec_fun_decl( &mut self, fun_name: &Token, params: &Vec<Token>, body: &Stmt ) -> EvalResult {
+    let key = fun_name.get_key();
+
+    // error on redefinition
+    if self.env.view().has_var_here( key ) {
+      return Err( self.make_error( fun_name, "This name is already in use.".to_string() ) );
+    }
+
+    // parameter keys
+    let mut param_keys: Vec<StringKey> = vec![];
+    for t in params {
+      param_keys.push( t.get_key() );
+    }
+
+    // result
+    let result = Eval::Fun( param_keys, body.clone() );
+
+    // create function entry
+    self.env.view_mut().create_var( key, result.clone() );
+    Ok( result )
   }
 
   fn exec_print_stmt( &mut self, expr: &Expr ) -> EvalResult {
@@ -129,8 +161,8 @@ impl<'str> Executor<'str> {
 
     // check variable has been declared
     let key = var.get_key();
-    if self.env.has_var( key ) {
-      self.env.write_var( key, result.clone() );
+    if self.env.view().has_var( key ) {
+      self.env.view_mut().write_var( key, result.clone() );
       Ok( result )
     }
     else {
@@ -138,13 +170,17 @@ impl<'str> Executor<'str> {
     }
   }
 
-  fn exec_block_stmt( &mut self, decls: &Vec<Decl>, line: &i32 ) -> EvalResult {
+  pub fn exec_block_stmt( &mut self, decls: &Vec<Decl>, line: &i32, new_scope: bool ) -> EvalResult {
     let mut result = Eval::Nil;
-    self.enclose_new_scope( *line );
+    if new_scope {
+      self.enclose_new_scope( *line );
+    }
     for decl in decls {
       result = self.exec_decl( decl )?;
     }
-    self.drop_enclosed_scope();
+    if new_scope {
+      self.drop_enclosed_scope();
+    }
     Ok( result )
   }
 
@@ -255,7 +291,12 @@ impl<'str> Executor<'str> {
     Ok( result )
   }
 
-  fn exec_for_stmt( &mut self, init: &Option<CtrlFlowInit>, condition: &Option<Expr>, incr: &Option<Expr>, body: &Box<Stmt> ) -> EvalResult {
+  fn exec_for_stmt(
+    &mut self,
+    init: &Option<CtrlFlowInit>,
+    condition: &Option<Expr>,
+    incr: &Option<Expr>,
+    body: &Box<Stmt> ) -> EvalResult {
 
     // init
     let mut result = Eval::Nil;
@@ -316,6 +357,13 @@ impl<'str> Executor<'str> {
     Ok( result )
   }
 
+  fn exec_return_stmt( &mut self, expr: &Option<Expr> ) -> EvalResult {
+    if expr.is_some() {
+      Err( EvalError::Return( expr.as_ref().unwrap().eval( self.sm, &self.env )? ) )
+    } else {
+      Err( EvalError::Return( Eval::Nil ) )
+    }
+  }
 
   fn enclose_new_scope( &mut self, line: i32 ) {
     self.env = Env::enclose_new( &self.env, line );
@@ -325,8 +373,8 @@ impl<'str> Executor<'str> {
     self.env = Env::drop_enclosed( &self.env );
   }
 
-  fn make_error( &self, t: &Token, msg: String ) -> Error {
-    Error::from_token( t, msg, self.sm )
+  fn make_error( &self, t: &Token, msg: String ) -> EvalError {
+    EvalError::Error( Error::from_token( t, msg, self.sm ) )
   }
 
   fn emit_error( &mut self, error: &Error ) {

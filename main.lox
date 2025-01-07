@@ -1,8 +1,6 @@
-
-
-var count = 15;
-if( count <= 100 )  {
-  print "Blast off!";
-} else {
-  print( "Sorry, show's over!" );
+fun say_hi( first, last ) {
+  print "Hi " + first + " " + last + "!";
+  return 3;
 }
+
+say_hi( "dear", "reader" );

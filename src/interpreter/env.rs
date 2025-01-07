@@ -7,7 +7,10 @@
 // use //
 /////////
 
+use std::borrow::{Borrow, BorrowMut};
+use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use crate::util::*;
 use crate::interpreter::eval::*;
@@ -18,16 +21,38 @@ use crate::interpreter::eval::*;
 //////////////////////
 
 #[derive(Clone)]
+pub struct RcMut<T> {
+  shared_ptr: Rc<RefCell<T>>
+}
+
+impl<T> RcMut<T> {
+
+  pub fn new( t: T ) -> RcMut<T> {
+    RcMut {
+      shared_ptr: Rc::new( RefCell::new( t ) )
+    }
+  }
+
+  pub fn view( &self ) -> Ref<T> {
+    self.shared_ptr.as_ref().borrow()
+  }
+
+  pub fn view_mut( &mut self ) -> RefMut<T> {
+    self.shared_ptr.as_ref().borrow_mut()
+  }
+}
+
+#[derive(Clone)]
 pub struct Env {
   db: HashMap<StringKey, Eval>,
-  parent: Option<Box<Env>>,
+  parent: Option<RcMut<Env>>,
   line: i32
 }
 
 impl Env {
 
-  pub fn create_global() -> Box<Env> {
-    Box::new(
+  pub fn create_global() -> RcMut<Env> {
+    RcMut::new(
       Env {
         db: HashMap::new(),
         parent: None,
@@ -36,8 +61,8 @@ impl Env {
     )
   }
 
-  pub fn enclose_new( parent: &Box<Env>, line: i32 ) -> Box<Env> {
-    Box::new(
+  pub fn enclose_new( parent: &RcMut<Env>, line: i32 ) -> RcMut<Env> {
+    RcMut::new(
       Env {
         db: HashMap::new(),
         parent: Some( parent.clone() ),
@@ -46,12 +71,24 @@ impl Env {
     )
   }
 
-  pub fn drop_enclosed( child: &Box<Env> ) -> Box<Env> {
-    let result = child.get_parent().clone();
+  pub fn drop_enclosed( child: &RcMut<Env> ) -> RcMut<Env> {
+    let parent = 
+      child.view()
+        .parent
+        .as_ref()
+        .expect( "Internal error: No parent. [ Env::drop_enclosed() is called on a child environment, so it should have a parent. Did you forget to call Env::enclose_new() previously?" )
+        .clone();
     let _ = child;
-    result
+    parent
   }
 
+  pub fn clone_global( child: &RcMut<Env> ) -> RcMut<Env> {
+    if child.view().is_global() {
+      child.clone()
+    } else {
+      Env::clone_global( child.view().parent.as_ref().unwrap() )
+    }
+  }
 
   pub fn is_global( &self ) -> bool {
     self.parent.is_none()
@@ -72,9 +109,9 @@ impl Env {
     }
   }
 
-  pub fn read_var( &self, key: StringKey ) -> &Eval {
+  pub fn read_var( &self, key: StringKey ) -> Eval {
     if self.has_var_here( key ) {
-      self.db.get( &key ).unwrap()
+      self.db.get( &key ).unwrap().clone()
     }
     else if self.is_global() {
       panic!( "Internal error: Unknown key. [ The caller of get_var() assumes responsibility for verifying that the key exists. ]" )
@@ -103,12 +140,18 @@ impl Env {
     }
   }
 
-  fn get_parent( &self ) -> &Box<Env> {
-    self.parent.as_ref().expect( "Internal error: No parent. [ The caller of get_parent() assumes responsibility for verifying that a parent exists." )
+  fn get_parent( &self ) -> Ref<Env> {    
+    self.parent
+      .as_ref()
+      .expect( "Internal error: No parent. [ The caller of get_parent() assumes responsibility for verifying that a parent exists." )
+      .view()    
   }
 
-  fn get_parent_mut( &mut self ) -> &mut Box<Env> {
-    self.parent.as_mut().expect( "Internal error: No parent. [ The caller of get_parent_mut() assumes responsibility for verifying that a parent exists." )
+  fn get_parent_mut( &mut self ) -> RefMut<Env> {
+    self.parent
+      .as_mut()
+      .expect( "Internal error: No parent. [ The caller of get_parent_mut() assumes responsibility for verifying that a parent exists." )
+      .view_mut()
   }
 
   fn debug_print_here( &self, sm: &StringManager ) {
