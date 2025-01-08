@@ -8,7 +8,7 @@
 /////////
 
 use crate::interpreter::token::*;
-use crate::util::StringManager;
+use crate::util::StringCache;
 
 
 //////////////////////
@@ -32,10 +32,10 @@ impl Error {
   //   }
   // }
 
-  pub fn from_token( t: &Token, msg: String, sm: &StringManager ) -> Error {
+  pub fn from_token( t: &Token, msg: String, sc: &StringCache ) -> Error {
     Error {
       line: t.get_line(),
-      loc: format!( " at '{}'", t.get_lexeme( sm ) ),
+      loc: format!( " at '{}'", t.get_lexeme( sc ) ),
       msg
     }
   }

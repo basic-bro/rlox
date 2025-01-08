@@ -9,6 +9,7 @@
 
 use crate::util::*;
 
+
 //////////////////////
 // public interface //
 //////////////////////
@@ -31,7 +32,7 @@ pub enum TokenType {
 
 impl TokenType {
 
-  pub fn get_lexeme<'str>( &self, sm: &'str StringManager ) -> &'str str {
+  pub fn get_lexeme<'str>( &self, sc: &'str StringCache ) -> &'str str {
     match self {
       Self::LeftParen => "(",
       Self::RightParen => ")",
@@ -52,9 +53,9 @@ impl TokenType {
       Self::GreaterEqual => ">=",
       Self::Less => "<",
       Self::LessEqual => "<=",
-      Self::Identifier( id ) => sm.gets( *id ),
-      Self::String( s ) => sm.gets( *s ),
-      Self::Number( f ) => sm.gets( *f ),
+      Self::Identifier( id ) => sc.gets( *id ),
+      Self::String( s ) => sc.gets( *s ),
+      Self::Number( f ) => sc.gets( *f ),
       Self::And => "and",
       Self::Class => "class",
       Self::Else => "else",
@@ -101,8 +102,8 @@ impl Token {
     }
   }
 
-  pub fn get_lexeme<'str>( &self, sm: &'str StringManager ) -> &'str str {
-    self.token_type.get_lexeme( sm )
+  pub fn get_lexeme<'str>( &self, sc: &'str StringCache ) -> &'str str {
+    self.token_type.get_lexeme( sc )
   }
 
   pub fn get_type( &self ) -> &TokenType {

@@ -13,7 +13,7 @@ use crate::interpreter::token::*;
 use crate::interpreter::expr::*;
 use crate::interpreter::stmt::*;
 
-use crate::util::StringManager;
+use crate::util::StringCache;
 
 
 //////////////////////
@@ -21,7 +21,7 @@ use crate::util::StringManager;
 //////////////////////
 
 pub struct Parser<'str> {
-  sm: &'str StringManager,
+  sc: &'str StringCache,
   tokens: Vec<Token>,
   decls: Vec<Decl>,
   current: usize,
@@ -34,9 +34,9 @@ type ParseDeclResult = Result<Decl, Error>;
 
 impl<'str> Parser<'str> {
 
-  pub fn new( sm: &'str StringManager ) -> Parser<'str> {
+  pub fn new( sc: &'str StringCache ) -> Parser<'str> {
     Parser{
-      sm,
+      sc,
       tokens: vec![],
       decls: vec![],
       current: 0,
@@ -407,7 +407,7 @@ impl<'str> Parser<'str> {
         Expr::Var( var ) => {
           Ok( Expr::Assignment( var, Box::new( value ) ) )
         }
-        _ => Err( Error::from_token( &equal, "Cannot assign to the expression on the left hand side.".to_string(), self.sm ) )
+        _ => Err( Error::from_token( &equal, "Cannot assign to the expression on the left hand side.".to_string(), self.sc ) )
       }
     }
     else {
@@ -539,16 +539,20 @@ impl<'str> Parser<'str> {
   fn parse_arguments( &mut self, callee: Expr ) -> ParseExprResult {
 
     let mut args: Vec<Box<Expr>> = vec![];
-    if !self.pop_if( TokenType::RightParen ) {
-      loop {
-        args.push( Box::new( self.parse_expr()? ) );
-        if !self.pop_if( TokenType::Comma ) {
-          break;
+    let paren =
+      if !self.pop_if( TokenType::RightParen ) {
+        loop {
+          args.push( Box::new( self.parse_expr()? ) );
+          if !self.pop_if( TokenType::Comma ) {
+            break;
+          }
         }
-      }
-    }
+        *self.pop_assert( TokenType::RightParen, " to finish function call." )?
+      } else {
+        *self.previous()
+      };
 
-    let paren = *self.pop_assert( TokenType::RightParen, " to finish function call." )?;
+    
 
     Ok( Expr::Call( Box::new( callee ), paren, args ) )
   }
@@ -676,7 +680,7 @@ impl<'str> Parser<'str> {
 
   fn pop_assert( &mut self, tt: TokenType, loc: &str ) -> Result<&Token, Error> {
     if self.peek_type() != tt {
-      Err( self.make_error( format!( "Expected '{}'{}", tt.get_lexeme( self.sm ), loc ) ) )
+      Err( self.make_error( format!( "Expected '{}'{}", tt.get_lexeme( self.sc ), loc ) ) )
     }
     else {
       Ok( self.pop() )
@@ -707,7 +711,7 @@ impl<'str> Parser<'str> {
 
   fn peek_assert( &mut self, tt: TokenType, loc: &str ) -> Result<(), Error> {
     if self.peek_type() != tt {
-      Err( self.make_error( format!( "Expected '{}'{}", tt.get_lexeme( self.sm ), loc ) ) )
+      Err( self.make_error( format!( "Expected '{}'{}", tt.get_lexeme( self.sc ), loc ) ) )
     }
     else {
       Ok( () )
@@ -724,7 +728,7 @@ impl<'str> Parser<'str> {
   }
 
   fn make_error( &self, msg: String ) -> Error {
-    Error::from_token( self.peek(), msg, self.sm )
+    Error::from_token( self.peek(), msg, self.sc )
   }
 
   fn emit_error( &mut self, error: &Error ) {

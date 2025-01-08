@@ -17,6 +17,7 @@ mod executor;
 mod eval;
 mod error;
 mod env;
+mod resolver;
 
 
 /////////
@@ -30,6 +31,7 @@ use crate::interpreter::eval::*;
 use crate::interpreter::scanner::*;
 use crate::interpreter::parser::*;
 use crate::interpreter::executor::*;
+use crate::interpreter::resolver::*;
 use crate::util::*;
 
 
@@ -38,14 +40,14 @@ use crate::util::*;
 //////////////////////
 
 pub struct Interpreter {
-  str_lookup: StringManager
+  str_lookup: StringCache
 }
 
 impl Interpreter {
 
   pub fn new() -> Interpreter {
     Interpreter {
-      str_lookup: StringManager::new()
+      str_lookup: StringCache::new()
     }
   }
 
@@ -108,6 +110,10 @@ impl Interpreter {
     if had_error {
       return ( Eval::Nil, true );
     }
+
+    // resolver
+    // let mut resolver = Resolver::new( &mut self.str_lookup );
+    // resolver.resolve( decls );
 
     // executor
     let mut executor = Executor::new( &mut self.str_lookup );

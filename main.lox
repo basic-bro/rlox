@@ -3,4 +3,43 @@ fun say_hi( first, last ) {
   return 3;
 }
 
-say_hi( "dear", "reader" );
+fun count( n ) {
+  if( n >= 100 ) {
+    print "n should be less than 100";
+    return;
+  }
+
+  while( n < 100 ) {
+    if( n == 3 ) {
+      return n;
+    }
+    print n;
+    n = n + 1;
+  }
+
+}
+
+fun fib( n ) {
+  if( n <= 1 ) {
+    return n;
+  }
+
+  return fib( n - 2 ) + fib( n - 1 );
+}
+
+for( var x = 0; x <= 10; x = x + 1 ) {
+  print fib( x );
+}
+
+fun make_counter() {
+  var i = 0;
+  fun count() {
+    i = i + 1;
+    print i;
+  }
+  return count;
+}
+
+//var counter = make_counter();
+//counter();
+//counter();

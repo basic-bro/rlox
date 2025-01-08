@@ -16,7 +16,7 @@ use crate::interpreter::token::*;
 //////////////////////
 
 pub struct Scanner<'str> {
-  sm: &'str mut StringManager,
+  sc: &'str mut StringCache,
   src: String,
   tokens: Vec<Token>,
   start: usize,
@@ -49,9 +49,9 @@ impl<'str> Scanner<'str> {
     }
   }
 
-  pub fn new( sm: &'str mut StringManager ) -> Scanner<'str> {
+  pub fn new( sc: &'str mut StringCache ) -> Scanner<'str> {
     Scanner {
-      sm,
+      sc,
       src: "".to_string(),
       tokens: vec![],
       start: 0,
@@ -146,7 +146,7 @@ impl<'str> Scanner<'str> {
     self.advance();
 
     let value = substring( &self.src, self.start + 1, self.current - self.start - 2 ).unwrap();
-    let key = self.sm.puts( value );
+    let key = self.sc.puts( value );
     self.add_token( TokenType::String( key ) );
   }
 
@@ -163,7 +163,7 @@ impl<'str> Scanner<'str> {
     }
 
     let value = substring( &self.src, self.start, self.current - self.start ).unwrap();
-    let key = self.sm.puts( value );
+    let key = self.sc.puts( value );
     self.add_token( TokenType::Number( key ) );
   }
 
@@ -173,7 +173,7 @@ impl<'str> Scanner<'str> {
     }
 
     let value = substring( &self.src, self.start, self.current - self.start ).unwrap();
-    let key = self.sm.puts( value );
+    let key = self.sc.puts( value );
 
     match Scanner::keyword( value ) {
       Some( tt ) => self.add_token( tt ),

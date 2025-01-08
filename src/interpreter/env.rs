@@ -7,10 +7,8 @@
 // use //
 /////////
 
-use std::borrow::{Borrow, BorrowMut};
-use std::cell::{Ref, RefCell, RefMut};
+use std::cell::{Ref, RefMut};
 use std::collections::HashMap;
-use std::rc::Rc;
 
 use crate::util::*;
 use crate::interpreter::eval::*;
@@ -20,151 +18,147 @@ use crate::interpreter::eval::*;
 // public interface //
 //////////////////////
 
-#[derive(Clone)]
-pub struct RcMut<T> {
-  shared_ptr: Rc<RefCell<T>>
+pub struct EnvStack {
+  stack: Stack<RcMut<Env>>
 }
 
-impl<T> RcMut<T> {
+impl EnvStack {
 
-  pub fn new( t: T ) -> RcMut<T> {
-    RcMut {
-      shared_ptr: Rc::new( RefCell::new( t ) )
+  pub fn new() -> EnvStack {
+    EnvStack {
+      stack: Stack::new()
     }
   }
 
-  pub fn view( &self ) -> Ref<T> {
-    self.shared_ptr.as_ref().borrow()
+  pub fn enclose_new( &mut self, line: i32 ) {
+    self.stack.push( RcMut::new( Env::new( line ) ) );
   }
 
-  pub fn view_mut( &mut self ) -> RefMut<T> {
-    self.shared_ptr.as_ref().borrow_mut()
+  pub fn drop_enclosed( &mut self ) {
+    self.stack.pop();
   }
+
+  pub fn clone_global( &self ) -> EnvStack {
+    let mut global = EnvStack::new();
+    global.stack.push( self.stack.peek( self.stack.depth() - 1 ).clone() );
+    global
+  }
+
+  fn peek( &self, depth: usize ) -> Ref<Env> {
+    self.stack.peek( depth ).view()
+  }
+
+  fn peek_mut( &mut self, depth: usize ) -> RefMut<Env> {
+    self.stack.peek_mut( depth ).view_mut()
+  }
+
+  fn curr( &self ) -> Ref<Env> {
+    self.peek( 0 )
+  }
+
+  fn curr_mut( &mut self ) -> RefMut<Env> {
+    self.peek_mut( 0 )
+  }
+
+  pub fn has_symbol_here( &self, symbol_key: StringKey ) -> bool {
+    self.curr().has_symbol( symbol_key )
+  }
+
+  pub fn has_symbol( &self, symbol_key: StringKey ) -> bool {
+    for depth in 0..self.stack.depth() {
+      if self.peek( depth ).has_symbol(symbol_key ) {
+        return true;
+      }
+    }
+    false
+  }
+
+  pub fn create_symbol( &mut self, symbol_key: StringKey, eval: Eval ) {
+    assert!( !self.has_symbol_here( symbol_key ) );
+    self.curr_mut().create_symbol( symbol_key, eval );
+  }
+
+  pub fn write_symbol( &mut self, symbol_key: StringKey, eval: Eval ) {
+    assert!( self.has_symbol( symbol_key ) );
+    for depth in 0..self.stack.depth() {
+      if self.peek( depth ).has_symbol( symbol_key ) {
+        self.peek_mut( depth ).write_symbol( symbol_key, eval );
+        return;
+      }
+    }
+    assert!( false );
+  }
+
+  pub fn read_symbol( &self, symbol_key: StringKey ) -> Eval {
+    assert!( self.has_symbol( symbol_key ) );
+    for depth in 0..self.stack.depth() {
+      if self.peek( depth ).has_symbol( symbol_key ) {
+        return self.peek( depth ).read_symbol( symbol_key );
+      }
+    }
+    assert!( false );
+    Eval::Nil
+  }
+
+  pub fn debug_print( &self, sc: &StringCache ) {
+    for depth in 0..self.stack.depth() {
+      self.peek(depth).debug_print( sc );
+    }
+  }
+
 }
+
+
+
 
 #[derive(Clone)]
 pub struct Env {
   db: HashMap<StringKey, Eval>,
-  parent: Option<RcMut<Env>>,
   line: i32
 }
 
 impl Env {
 
-  pub fn create_global() -> RcMut<Env> {
-    RcMut::new(
-      Env {
-        db: HashMap::new(),
-        parent: None,
-        line: 0
-      }
-    )
-  }
-
-  pub fn enclose_new( parent: &RcMut<Env>, line: i32 ) -> RcMut<Env> {
-    RcMut::new(
-      Env {
-        db: HashMap::new(),
-        parent: Some( parent.clone() ),
-        line
-      }
-    )
-  }
-
-  pub fn drop_enclosed( child: &RcMut<Env> ) -> RcMut<Env> {
-    let parent = 
-      child.view()
-        .parent
-        .as_ref()
-        .expect( "Internal error: No parent. [ Env::drop_enclosed() is called on a child environment, so it should have a parent. Did you forget to call Env::enclose_new() previously?" )
-        .clone();
-    let _ = child;
-    parent
-  }
-
-  pub fn clone_global( child: &RcMut<Env> ) -> RcMut<Env> {
-    if child.view().is_global() {
-      child.clone()
-    } else {
-      Env::clone_global( child.view().parent.as_ref().unwrap() )
+  pub fn new( line: i32 ) -> Env {
+    Env {
+      db: HashMap::new(),
+      line
     }
   }
 
-  pub fn is_global( &self ) -> bool {
-    self.parent.is_none()
-  }
-
-  pub fn has_var_here( &self, key: StringKey ) -> bool {
+  pub fn has_symbol( &self, key: StringKey ) -> bool {
     self.db.contains_key( &key )
   }
 
-  // recursive!
-  pub fn has_var( &self, key: StringKey ) -> bool {
-    let result = self.has_var_here( key );
-    if self.is_global() {
-      result
-    }
-    else {
-      result || self.get_parent().has_var( key )
-    }
-  }
-
-  pub fn read_var( &self, key: StringKey ) -> Eval {
-    if self.has_var_here( key ) {
+  pub fn read_symbol( &self, key: StringKey ) -> Eval {
+    if self.has_symbol( key ) {
       self.db.get( &key ).unwrap().clone()
     }
-    else if self.is_global() {
-      panic!( "Internal error: Unknown key. [ The caller of get_var() assumes responsibility for verifying that the key exists. ]" )
-    }
     else {
-      self.get_parent().read_var( key )
+      panic!( "Internal error: Unknown key. [ The caller of read_var() assumes responsibility for verifying that the key exists. ]" )
     }
   }
 
-  pub fn create_var( &mut self, key: StringKey, value: Eval ) {
-    assert!( !self.has_var_here( key ),
+  pub fn create_symbol( &mut self, key: StringKey, value: Eval ) {
+    assert!( !self.has_symbol( key ),
       "Internal error: Known/duplicate key. [ The caller of create_var() assumes responsibility for verifying that a key is unique. ]"
     );
     self.db.insert( key, value );
   }
 
-  pub fn write_var( &mut self, key: StringKey, value: Eval ) {
-    if self.has_var_here( key ) {
+  pub fn write_symbol( &mut self, key: StringKey, value: Eval ) {
+    if self.has_symbol( key ) {
       self.db.insert( key, value );
     }
-    else if self.is_global() {
-      panic!( "Internal error: Unknown key. [ The caller of set_var() assumes responsibility for verifying that the key exists. ]" )
-    }
     else {
-      self.get_parent_mut().write_var( key, value );
+      panic!( "Internal error: Unknown key. [ The caller of write_var() assumes responsibility for verifying that the key exists. ]" )
     }
   }
 
-  fn get_parent( &self ) -> Ref<Env> {    
-    self.parent
-      .as_ref()
-      .expect( "Internal error: No parent. [ The caller of get_parent() assumes responsibility for verifying that a parent exists." )
-      .view()    
-  }
-
-  fn get_parent_mut( &mut self ) -> RefMut<Env> {
-    self.parent
-      .as_mut()
-      .expect( "Internal error: No parent. [ The caller of get_parent_mut() assumes responsibility for verifying that a parent exists." )
-      .view_mut()
-  }
-
-  fn debug_print_here( &self, sm: &StringManager ) {
+  fn debug_print( &self, sc: &StringCache ) {
     print!( "\nEnv beginning on line {} has {} entries:", self.line, self.db.len() );
     for ( key, value ) in &self.db {
-      print!( "\n  {} = {}", sm.gets( *key ), value );
-    }
-  }
-
-  pub fn debug_print( &self, sm: &StringManager ) {
-    self.debug_print_here( sm );
-    if !self.is_global() {
-      self.get_parent().debug_print( sm );
+      print!( "\n  {} = {}", sc.gets( *key ), value );
     }
   }
 

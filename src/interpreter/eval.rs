@@ -82,16 +82,16 @@ pub enum EvalError {
 pub type EvalResult = Result<Eval, EvalError>;
 
 pub struct ExprEvaluator<'str, 'env> {
-  sm: &'str mut StringManager,
-  env: &'env RcMut<Env>
+  sc: &'str mut StringCache,
+  envs: &'env EnvStack
 }
 
 impl<'str, 'env> ExprEvaluator<'str, 'env> {
 
-  pub fn new( sm: &'str mut StringManager, env: &'env RcMut<Env> ) -> ExprEvaluator<'str, 'env> {
+  pub fn new( sc: &'str mut StringCache, envs: &'env EnvStack ) -> ExprEvaluator<'str, 'env> {
     ExprEvaluator {
-      sm,
-      env
+      sc,
+      envs
     }
   }
 
@@ -144,7 +144,7 @@ impl<'str, 'env> ExprVisitorMut<Eval, EvalError> for ExprEvaluator<'str, 'env> {
                   
                   // error 
                   _ => Err( EvalError::Error( Error::from_token( op,
-                    "Unknown binary operation on type Number.".to_string(), self.sm ) ) )
+                    "Unknown binary operation on type Number.".to_string(), self.sc ) ) )
                 },
           
           // binary operations on StringLiterals
@@ -156,7 +156,7 @@ impl<'str, 'env> ExprVisitorMut<Eval, EvalError> for ExprEvaluator<'str, 'env> {
 
                   // error
                   _ => Err( EvalError::Error( Error::from_token( op,
-                    "Unknown binary operation on type String.".to_string(), self.sm ) ) )
+                    "Unknown binary operation on type String.".to_string(), self.sc ) ) )
                 },
           
           // binary operations on Bools
@@ -169,7 +169,7 @@ impl<'str, 'env> ExprVisitorMut<Eval, EvalError> for ExprEvaluator<'str, 'env> {
 
                   // error
                   _ => Err( EvalError::Error( Error::from_token( op,
-                    "Unknown binary operation on type Bool.".to_string(), self.sm ) ) )
+                    "Unknown binary operation on type Bool.".to_string(), self.sc ) ) )
             },
 
           // binary operation on Nils
@@ -182,13 +182,13 @@ impl<'str, 'env> ExprVisitorMut<Eval, EvalError> for ExprEvaluator<'str, 'env> {
 
                 // error
                 _ => Err( EvalError::Error( Error::from_token( op,
-                  "Unknown binary operation on type Nil.".to_string(), self.sm ) ) )
+                  "Unknown binary operation on type Nil.".to_string(), self.sc ) ) )
             }
 
           // error
           _ => Err( EvalError::Error( Error::from_token( op,
             format!( "Unknown binary operation on the types provided. (The types are {} and {}, respectively.)",
-              left.get_type_name(), right.get_type_name() ), self.sm ) ) )
+              left.get_type_name(), right.get_type_name() ), self.sc ) ) )
         }
     }
   }
@@ -204,22 +204,19 @@ impl<'str, 'env> ExprVisitorMut<Eval, EvalError> for ExprEvaluator<'str, 'env> {
         // check arity
         if param_keys.len() != args.len() {
           return Err( EvalError::Error( Error::from_token( paren,
-            format!( "Expected {} arguments to function call, but found {}.", param_keys.len(), args.len() ), self.sm ) ) );
+            format!( "Expected {} arguments to function call, but found {}.", param_keys.len(), args.len() ), self.sc ) ) );
         }
 
         // prepare function scope
-        let fun_global = Env::clone_global( &self.env );
-        let mut fun_scope = Env::enclose_new( &fun_global, paren.get_line() );
+        let mut fun_envs = self.envs.clone_global();
+        fun_envs.enclose_new( paren.get_line() );
 
         // add parameters to function scope
         for ( key, value ) in zip( param_keys, args ) {
-          fun_scope.view_mut().create_var( key, value.clone() );
+          fun_envs.create_symbol( key, value.clone() );
         }
 
-        let mut fn_exec = Executor::with_env( &mut self.sm, fun_scope.clone() );
-        
-        
-        // Env::drop_enclosed( &fun_scope ); // needed?
+        let mut fn_exec = Executor::with_envs( &mut self.sc, fun_envs );
 
         match fn_exec.exec_block_stmt( &decls, &line, false ) {
           Err( EvalError::Return( retval ) ) => Ok( retval ),
@@ -229,7 +226,7 @@ impl<'str, 'env> ExprVisitorMut<Eval, EvalError> for ExprEvaluator<'str, 'env> {
         panic!( "Internal error: 'body' should have type Stmt::Block, but it has type {} instead.", body.get_type_name() );  
       }
     } else {
-      Err( EvalError::Error( Error::from_token( paren, format!( "Cannot call a {}.", callee.get_type_name() ), self.sm ) ) )
+      Err( EvalError::Error( Error::from_token( paren, format!( "Cannot call a {}.", callee.get_type_name() ), self.sc ) ) )
     }
   }
 
@@ -239,13 +236,13 @@ impl<'str, 'env> ExprVisitorMut<Eval, EvalError> for ExprEvaluator<'str, 'env> {
 
   fn visit_literal( &self, literal: &Token ) -> Result<Eval, EvalError> {
     match literal.get_type() {
-      TokenType::String( s ) => Ok( Eval::StringLiteral( self.sm.gets( *s ).to_string() ) ),
-      TokenType::Number( s ) => Ok( Eval::Number( self.sm.gets( *s ).parse::<f64>().unwrap() ) ),
+      TokenType::String( s ) => Ok( Eval::StringLiteral( self.sc.gets( *s ).to_string() ) ),
+      TokenType::Number( s ) => Ok( Eval::Number( self.sc.gets( *s ).parse::<f64>().unwrap() ) ),
       TokenType::True => Ok( Eval::Bool( true ) ),
       TokenType::False => Ok( Eval::Bool( false ) ),
       TokenType::Nil => Ok( Eval::Nil ),
       _ => Err( EvalError::Error( Error::from_token( literal,
-        "Internal error: evaluation of this expression is not implemented.".to_string(), self.sm ) ) )
+        "Internal error: evaluation of this expression is not implemented.".to_string(), self.sc ) ) )
     }
   }
 
@@ -255,10 +252,10 @@ impl<'str, 'env> ExprVisitorMut<Eval, EvalError> for ExprEvaluator<'str, 'env> {
       TokenType::Minus => match expr {
         Eval::Number( x ) => Ok( Eval::Number( -x ) ),
         _ => Err( EvalError::Error( Error::from_token( op,
-          format!( "Unary '-' cannot be applied to a value of type {}.", expr.get_type_name() ), self.sm ) ) )
+          format!( "Unary '-' cannot be applied to a value of type {}.", expr.get_type_name() ), self.sc ) ) )
       },
       _ => Err( EvalError::Error( Error::from_token( op,
-        "Internal error: evaluation of this unary operator is not implemented.".to_string(), self. sm ) ) )
+        "Internal error: evaluation of this unary operator is not implemented.".to_string(), self. sc ) ) )
     }
   }
 
@@ -267,14 +264,14 @@ impl<'str, 'env> ExprVisitorMut<Eval, EvalError> for ExprEvaluator<'str, 'env> {
       TokenType::Identifier( id ) => {
 
         // error on undeclared variable
-        if !self.env.view().has_var( *id ) {
-          Err( EvalError::Error( Error::from_token( var, "Undeclared variable.".to_string(), self.sm ) ) )
+        if !self.envs.has_symbol( *id ) {
+          Err( EvalError::Error( Error::from_token( var, "Undeclared variable.".to_string(), self.sc ) ) )
         } else {
-          Ok( self.env.view().read_var( *id ).clone() )
+          Ok( self.envs.read_symbol( *id ).clone() )
         }
       }
       _ => Err( EvalError::Error( Error::from_token( var,
-        "Internal error: evaluation of this expression is not implemented.".to_string(), self. sm ) ) )
+        "Internal error: evaluation of this expression is not implemented.".to_string(), self. sc ) ) )
     }
   }
   

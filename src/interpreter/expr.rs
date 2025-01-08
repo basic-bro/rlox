@@ -79,8 +79,8 @@ impl Expr {
     Ok( results )
   }
 
-  pub fn to_string( &self, sm: &StringManager ) -> String {
-    match self.visit( &ExprFormatter::new( sm ) ) {
+  pub fn to_string( &self, sc: &StringCache ) -> String {
+    match self.visit( &ExprFormatter::new( sc ) ) {
       Ok( s ) => s,
       Err( error ) => error.msg
     }
@@ -115,21 +115,21 @@ impl Expr {
     Ok( results )
   }
 
-  pub fn eval( &self, sm: &mut StringManager, env: &RcMut<Env> ) -> EvalResult {
-    self.visit_mut( &mut ExprEvaluator::new( sm, env ) )
+  pub fn eval( &self, sc: &mut StringCache, envs: &EnvStack ) -> EvalResult {
+    self.visit_mut( &mut ExprEvaluator::new( sc, envs ) )
   }
   
 }
 
 pub struct ExprFormatter<'str> {
-  sm: &'str StringManager
+  sc: &'str StringCache
 }
 
 impl<'str> ExprFormatter<'str> {
 
-  pub fn new( sm: &'str StringManager ) -> ExprFormatter<'str> {
+  pub fn new( sc: &'str StringCache ) -> ExprFormatter<'str> {
     ExprFormatter {
-      sm
+      sc
     }
   }
 
@@ -138,11 +138,11 @@ impl<'str> ExprFormatter<'str> {
 impl<'str> ExprVisitor<String> for ExprFormatter<'str> {
 
   fn visit_assignment( &self, var: &Token, right: String ) -> Result<String, Error> {
-      Ok( format!( "{} = {}", var.get_lexeme( self.sm ), right ) )
+      Ok( format!( "{} = {}", var.get_lexeme( self.sc ), right ) )
   }
 
   fn visit_binary( &self, left: String, op: &Token, right: String ) -> Result<String, Error> {
-    Ok( format!( "{} {} {}", left, op.get_lexeme( self.sm ), right ) )
+    Ok( format!( "{} {} {}", left, op.get_lexeme( self.sc ), right ) )
   }
 
   fn visit_call( &self, callee: String, _paren: &Token, args: &Vec<String> ) -> Result<String, Error> {
@@ -180,18 +180,18 @@ impl<'str> ExprVisitor<String> for ExprFormatter<'str> {
     Ok(
       match literal.get_type() {
         TokenType::String( s )
-          => format!( "\"{}\"", self.sm.gets( *s ) ),
-        _ => format!( "{}", literal.get_lexeme( self.sm ) )
+          => format!( "\"{}\"", self.sc.gets( *s ) ),
+        _ => format!( "{}", literal.get_lexeme( self.sc ) )
       }
     )
   }
 
   fn visit_unary( &self, op: &Token, expr: String ) -> Result<String, Error> {
-    Ok( format!( "{}{}", op.get_lexeme( self.sm ), expr ) )
+    Ok( format!( "{}{}", op.get_lexeme( self.sc ), expr ) )
   }
 
   fn visit_var( &self, var: &Token ) -> Result<String, Error> {
-      Ok( format!( "{}", var.get_lexeme( self.sm ) ) )
+      Ok( format!( "{}", var.get_lexeme( self.sc ) ) )
   }
 
 }

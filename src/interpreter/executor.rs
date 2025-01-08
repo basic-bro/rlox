@@ -23,25 +23,28 @@ use crate::util::*;
 //////////////////////
 
 pub struct Executor<'str> {
-  sm: &'str mut StringManager,
-  env: RcMut<Env>,
+  sc: &'str mut StringCache,
+  envs: EnvStack,
   had_error: bool
 }
 
 impl<'str> Executor<'str> {
 
-  pub fn new( sm: &'str mut StringManager ) -> Executor<'str> {
-    Executor{
-      sm,
-      env: Env::create_global(),
+  pub fn new( sc: &'str mut StringCache ) -> Executor<'str> {
+    let mut executor = Executor{
+      sc,
+      envs: EnvStack::new(),
       had_error: false,
-    }  
+    };
+
+    executor.envs.enclose_new( 0 );
+    executor
   }
 
-  pub fn with_env( sm: &'str mut StringManager, env: RcMut<Env> ) -> Executor<'str> {
+  pub fn with_envs( sc: &'str mut StringCache, envs: EnvStack ) -> Executor<'str> {
     Executor {
-      sm,
-      env,
+      sc,
+      envs,
       had_error: false
     }
   }
@@ -100,18 +103,18 @@ impl<'str> Executor<'str> {
     let key = var.get_key();
 
     // error on redefinition
-    if self.env.view().has_var_here( key ) {
-      return Err( self.make_error( var, "This variable is already in use.".to_string() ) );
+    if self.envs.has_symbol_here( key ) {
+      return Err( self.make_error( var, "This symbol is already in use.".to_string() ) );
     }
 
     // evaluate initialiser
     let result = match init {
-      Some( expr ) => expr.eval( self.sm, &self.env ),
+      Some( expr ) => expr.eval( self.sc, &self.envs ),
       None => Ok( Eval::Nil )
     }?;
 
     // create variable
-    self.env.view_mut().create_var( key, result.clone() );
+    self.envs.create_symbol( key, result.clone() );
     Ok( result )
   }
 
@@ -119,7 +122,7 @@ impl<'str> Executor<'str> {
     let key = fun_name.get_key();
 
     // error on redefinition
-    if self.env.view().has_var_here( key ) {
+    if self.envs.has_symbol_here( key ) {
       return Err( self.make_error( fun_name, "This name is already in use.".to_string() ) );
     }
 
@@ -133,18 +136,18 @@ impl<'str> Executor<'str> {
     let result = Eval::Fun( param_keys, body.clone() );
 
     // create function entry
-    self.env.view_mut().create_var( key, result.clone() );
+    self.envs.create_symbol( key, result.clone() );
     Ok( result )
   }
 
   fn exec_print_stmt( &mut self, expr: &Expr ) -> EvalResult {
-    let result = expr.eval( self.sm, &self.env )?;
+    let result = expr.eval( self.sc, &self.envs )?;
     print!( "{}\n", result );
     Ok( result )
   }
 
   fn exec_expr_stmt( &mut self, expr: &Expr ) -> EvalResult {
-    let result = expr.eval( self.sm, &self.env )?;
+    let result = expr.eval( self.sc, &self.envs )?;
     if let Expr::Assignment( var, rhs ) = expr {
       self.exec_assign_expr( var, rhs, result )
     } else{
@@ -161,8 +164,8 @@ impl<'str> Executor<'str> {
 
     // check variable has been declared
     let key = var.get_key();
-    if self.env.view().has_var( key ) {
-      self.env.view_mut().write_var( key, result.clone() );
+    if self.envs.has_symbol( key ) {
+      self.envs.write_symbol( key, result.clone() );
       Ok( result )
     }
     else {
@@ -221,7 +224,7 @@ impl<'str> Executor<'str> {
     }
 
     // run if-then-else
-    let result = if condition.eval( self.sm, &self.env )?.is_truthy() {
+    let result = if condition.eval( self.sc, &self.envs )?.is_truthy() {
       self.exec_stmt( then )?
     } else if else_.is_some() {
       self.exec_stmt( else_.as_ref().unwrap() )?
@@ -279,7 +282,7 @@ impl<'str> Executor<'str> {
     }
 
     // run loop
-    while condition.eval( self.sm, &self.env )?.is_truthy() {
+    while condition.eval( self.sc, &self.envs )?.is_truthy() {
       result = self.exec_stmt( body )?;
     }
 
@@ -335,7 +338,7 @@ impl<'str> Executor<'str> {
 
       // condition
       if let Some( expr ) = condition {
-        if !expr.eval( self.sm, &self.env )?.is_truthy() {
+        if !expr.eval( self.sc, &self.envs )?.is_truthy() {
           break;
         }
       }
@@ -359,22 +362,22 @@ impl<'str> Executor<'str> {
 
   fn exec_return_stmt( &mut self, expr: &Option<Expr> ) -> EvalResult {
     if expr.is_some() {
-      Err( EvalError::Return( expr.as_ref().unwrap().eval( self.sm, &self.env )? ) )
+      Err( EvalError::Return( expr.as_ref().unwrap().eval( self.sc, &self.envs )? ) )
     } else {
       Err( EvalError::Return( Eval::Nil ) )
     }
   }
 
   fn enclose_new_scope( &mut self, line: i32 ) {
-    self.env = Env::enclose_new( &self.env, line );
+    self.envs.enclose_new( line );
   }
 
   fn drop_enclosed_scope( &mut self ) {
-    self.env = Env::drop_enclosed( &self.env );
+    self.envs.drop_enclosed();
   }
 
   fn make_error( &self, t: &Token, msg: String ) -> EvalError {
-    EvalError::Error( Error::from_token( t, msg, self.sm ) )
+    EvalError::Error( Error::from_token( t, msg, self.sc ) )
   }
 
   fn emit_error( &mut self, error: &Error ) {
