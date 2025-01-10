@@ -15,8 +15,8 @@ use crate::interpreter::token::*;
 // public interface //
 //////////////////////
 
-pub struct Scanner<'str> {
-  sc: &'str mut StringCache,
+pub struct Scanner {
+  sc: RcMut<StringCache>,
   src: String,
   tokens: Vec<Token>,
   start: usize,
@@ -25,7 +25,7 @@ pub struct Scanner<'str> {
   had_error: bool
 }
 
-impl<'str> Scanner<'str> {
+impl Scanner {
 
   pub fn keyword( value: &str ) -> Option<TokenType> {
     match value {
@@ -49,7 +49,7 @@ impl<'str> Scanner<'str> {
     }
   }
 
-  pub fn new( sc: &'str mut StringCache ) -> Scanner<'str> {
+  pub fn new( sc: RcMut<StringCache> ) -> Scanner {
     Scanner {
       sc,
       src: "".to_string(),
@@ -146,7 +146,7 @@ impl<'str> Scanner<'str> {
     self.advance();
 
     let value = substring( &self.src, self.start + 1, self.current - self.start - 2 ).unwrap();
-    let key = self.sc.puts( value );
+    let key = self.sc.view_mut().puts( value );
     self.add_token( TokenType::String( key ) );
   }
 
@@ -163,7 +163,7 @@ impl<'str> Scanner<'str> {
     }
 
     let value = substring( &self.src, self.start, self.current - self.start ).unwrap();
-    let key = self.sc.puts( value );
+    let key = self.sc.view_mut().puts( value );
     self.add_token( TokenType::Number( key ) );
   }
 
@@ -173,7 +173,7 @@ impl<'str> Scanner<'str> {
     }
 
     let value = substring( &self.src, self.start, self.current - self.start ).unwrap();
-    let key = self.sc.puts( value );
+    let key = self.sc.view_mut().puts( value );
 
     match Scanner::keyword( value ) {
       Some( tt ) => self.add_token( tt ),

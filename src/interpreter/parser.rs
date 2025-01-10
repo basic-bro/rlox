@@ -13,15 +13,15 @@ use crate::interpreter::token::*;
 use crate::interpreter::expr::*;
 use crate::interpreter::stmt::*;
 
-use crate::util::StringCache;
+use crate::util::*;
 
 
 //////////////////////
 // public interface //
 //////////////////////
 
-pub struct Parser<'str> {
-  sc: &'str StringCache,
+pub struct Parser {
+  sc: RcMut<StringCache>,
   tokens: Vec<Token>,
   decls: Vec<Decl>,
   current: usize,
@@ -32,13 +32,13 @@ type ParseExprResult = Result<Expr, Error>;
 type ParseStmtResult = Result<Stmt, Error>;
 type ParseDeclResult = Result<Decl, Error>;
 
-impl<'str> Parser<'str> {
+impl Parser {
 
-  pub fn new( sc: &'str StringCache ) -> Parser<'str> {
+  pub fn new( sc: RcMut<StringCache> ) -> Parser {
     Parser{
       sc,
-      tokens: vec![],
-      decls: vec![],
+      tokens: Vec::new(),
+      decls: Vec::new(),
       current: 0,
       had_error: false
     }  
@@ -404,10 +404,10 @@ impl<'str> Parser<'str> {
       let equal = *self.pop();
       let value = self.parse_assign()?;
       match expr {
-        Expr::Var( var ) => {
+        Expr::Symbol( var ) => {
           Ok( Expr::Assignment( var, Box::new( value ) ) )
         }
-        _ => Err( Error::from_token( &equal, "Cannot assign to the expression on the left hand side.".to_string(), self.sc ) )
+        _ => Err( Error::from_token( &equal, "Cannot assign to the expression on the left hand side.".to_string(), &self.sc.view() ) )
       }
     }
     else {
@@ -573,7 +573,7 @@ impl<'str> Parser<'str> {
   fn parse_primary( &mut self ) -> ParseExprResult {
     if self.is_primary() {
       if self.is_id() {
-        Ok( Expr::Var( *self.pop() ) )
+        Ok( Expr::Symbol( *self.pop() ) )
       } else {
         Ok( Expr::Literal( *self.pop() ) )
       }
@@ -680,7 +680,7 @@ impl<'str> Parser<'str> {
 
   fn pop_assert( &mut self, tt: TokenType, loc: &str ) -> Result<&Token, Error> {
     if self.peek_type() != tt {
-      Err( self.make_error( format!( "Expected '{}'{}", tt.get_lexeme( self.sc ), loc ) ) )
+      Err( self.make_error( format!( "Expected '{}'{}", tt.get_lexeme( &self.sc.view() ), loc ) ) )
     }
     else {
       Ok( self.pop() )
@@ -711,7 +711,7 @@ impl<'str> Parser<'str> {
 
   fn peek_assert( &mut self, tt: TokenType, loc: &str ) -> Result<(), Error> {
     if self.peek_type() != tt {
-      Err( self.make_error( format!( "Expected '{}'{}", tt.get_lexeme( self.sc ), loc ) ) )
+      Err( self.make_error( format!( "Expected '{}'{}", tt.get_lexeme( &self.sc.view() ), loc ) ) )
     }
     else {
       Ok( () )
@@ -728,7 +728,7 @@ impl<'str> Parser<'str> {
   }
 
   fn make_error( &self, msg: String ) -> Error {
-    Error::from_token( self.peek(), msg, self.sc )
+    Error::from_token( self.peek(), msg, &self.sc.view() )
   }
 
   fn emit_error( &mut self, error: &Error ) {

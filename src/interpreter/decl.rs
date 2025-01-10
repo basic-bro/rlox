@@ -19,6 +19,6 @@ use crate::interpreter::expr::*;
 #[derive(Debug, Clone)]
 pub enum Decl {
   Stmt( Stmt ),
-  Fun( /* fun_name: */ Token, /* arg_names: */ Vec<Token>, /* body: */ Stmt ),
+  Fun( /* fun_name: */ Token, /* arg_names: */ Vec<Token>, /* body: */ Stmt /* ::Block */ ),
   Var( Token /* identifier */, Option<Expr> /* initialiser */ )
 }

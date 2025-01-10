@@ -62,6 +62,7 @@ impl StringKey {
 
 }
 
+#[derive(Clone)]
 pub struct StringCache {
   db: HashMap<StringKey, String>
 }
@@ -241,5 +242,176 @@ impl<T> RcMut<T> {
 
   pub fn view_mut( &mut self ) -> RefMut<T> {
     self.shared_ptr.as_ref().borrow_mut()
+  }
+}
+
+#[derive(Clone)]
+pub struct Tree<N> {
+  nodes: HashMap<u64, N>,
+  children: HashMap<u64, Vec<u64>>,
+  key: u64
+}
+
+pub trait TreeVisitor<N, T, E> {
+  fn visit_node( &self, db: &Tree<N>, node_key: u64, depth: u32 ) -> Result<T, E>;
+  fn fold( &self, parent_result: &T, children_results: &Vec<T> ) -> T;
+}
+
+pub trait TreeVisitorMut<N, T, E> {
+  fn visit_node( &self, db: &mut Tree<N>, node_key: u64, depth: u32 ) -> Result<T, E>;
+  fn fold( &self, parent_result: &T, children_results: &Vec<T> ) -> T;
+}
+
+pub trait TreeVisitorTgt<N, T, E> {
+  fn accept<V: TreeVisitor<N, T, E>>( &self, visitor: &V ) -> Result<T, E>;
+  fn accept_node<V: TreeVisitor<N, T, E>>( &self, visitor: &V, node_key: u64, depth: u32 ) -> Result<T, E>;
+}
+
+pub trait TreeVisitorMutTgt<N, T, E> {
+  fn accept_mut<V: TreeVisitorMut<N, T, E>>( &mut self, visitor: &V ) -> Result<T, E>;
+  fn accept_node_mut<V: TreeVisitorMut<N, T, E>>( &mut self, visitor: &V, node_key: u64, depth: u32 ) -> Result<T, E>;
+}
+
+impl<N> Tree<N> {
+  pub fn new( root: N ) -> Tree<N> {
+    let mut new_tree = Tree {
+      nodes: HashMap::new(),
+      children: HashMap::new(),
+      key: 0
+    };
+    new_tree.add_root_node( root );
+    new_tree
+  }
+
+  fn use_key( &mut self ) -> u64 {
+    let key = self.key;
+    self.key += 1;
+    key
+  }
+
+  pub fn has_node( &self, node_key: u64 ) -> bool {
+    node_key < self.key
+  }
+
+  pub fn has_children( &self, parent_node: u64 ) -> bool {
+    self.children.contains_key( &parent_node )
+  }
+
+  fn add_root_node( &mut self, root: N ) {
+    let root_key = self.use_key();
+    assert!( root_key == 0 );
+    self.nodes.insert( root_key, root );
+  }
+
+  pub fn add_node( &mut self, parent_key: u64, node: N ) -> u64 {
+
+    // add child to self.nodes
+    let child_key = self.use_key();
+    self.nodes.insert( child_key, node );
+
+    // update parent's list of children
+    if self.children.contains_key( &parent_key ) {
+      self.children.get_mut( &parent_key ).unwrap().push( child_key );
+    } else {
+      self.children.insert( parent_key, vec![ child_key ] );
+    }
+    
+    // return child key
+    child_key
+  }
+
+  pub fn is_parent_of( &self, parent_key: u64, child_key: u64 ) -> bool {
+    match self.children.get( &parent_key ) {
+        Some( child_keys ) => child_keys.contains( &child_key ),
+        None => false
+    }
+  }
+
+  pub fn get_parent_key( &self, child_key: u64 ) -> u64 {
+    for &node_key in self.nodes.keys() {
+      if self.is_parent_of( node_key, child_key ) {
+        return node_key;
+      }
+    }
+    panic!( "Node has no parent. The caller of get_parent_key() assumes responsibility for checking that a parent exists." );
+  }
+
+  pub fn get_parent_key_stack( &self, child_key: u64 ) -> Stack<u64> {
+    let mut stack: Stack<u64> = Stack::new();
+    let mut curr_child_key = child_key;
+
+    loop {
+      if curr_child_key == 0 {
+        break;
+      }
+
+      let curr_parent_key = self.get_parent_key( curr_child_key );
+      stack.push( curr_parent_key );
+      curr_child_key = curr_parent_key;
+    }
+
+    stack.vec.reverse();
+    stack
+  }
+
+  pub fn get_children( &self, parent_key: u64 ) -> &Vec<u64> {
+    self.children.get( &parent_key )
+      .expect( "Node has no children. The caller of get_children() assumes responsibility for checking that the node has children." )
+  }
+
+  pub fn read_node( &self, node_key: u64 ) -> &N {
+    self.nodes.get( &node_key )
+      .expect( "Node not found. The caller of read_node() assumes responsibility for checking that the node exists." )
+  }
+
+  pub fn write_node( &mut self, node_key: u64 ) -> &mut N {
+    self.nodes.get_mut( &node_key )
+      .expect( "Node not found. The caller of write_node() assumes responsibility for checking that the node exists." )
+  }
+}
+
+impl<N, T, E> TreeVisitorTgt<N, T, E> for Tree<N> {
+  fn accept<V: TreeVisitor<N, T, E>>( &self, visitor: &V ) -> Result<T, E> {
+    self.accept_node( visitor, 0, 0 )
+  }
+
+  fn accept_node<V: TreeVisitor<N, T, E>>( &self, visitor: &V, node_key: u64, depth: u32 ) -> Result<T, E> {
+
+    // visit the given node
+    let parent_result = visitor.visit_node( self, node_key, depth )?;
+
+    // visit its children
+    let mut children_results: Vec<T> = Vec::new();
+    if self.has_children( node_key ) {
+      for child_key in self.get_children( node_key ) {
+        children_results.push( self.accept_node( visitor, *child_key, depth + 1 )? );
+      }
+    }
+
+    // success if we get to here!
+    Ok( visitor.fold( &parent_result, &children_results ) )
+  }
+}
+
+impl<N, T, E> TreeVisitorMutTgt<N, T, E> for Tree<N> {
+  fn accept_mut<V: TreeVisitorMut<N, T, E>>( &mut self, visitor: &V ) -> Result<T, E> {
+    self.accept_node_mut( visitor, 0, 0 )
+  }
+
+  fn accept_node_mut<V: TreeVisitorMut<N, T, E>>( &mut self, visitor: &V, node_key: u64, depth: u32 ) -> Result<T, E> {
+
+    // visit the given node
+    let parent_result = visitor.visit_node( self, node_key, depth )?;
+
+    // visit its children
+    let mut children_results: Vec<T> = Vec::new();
+    if self.has_children( node_key ) {
+      for child_key in self.get_children( node_key ).clone() {
+        children_results.push( self.accept_node_mut( visitor, child_key, depth + 1 )? );
+      }
+    }
+
+    // success if we get to here!
+    Ok( visitor.fold( &parent_result, &children_results ) )
   }
 }

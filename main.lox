@@ -1,10 +1,13 @@
-fun say_hi( first, last ) {
+fun say_hi( first, last )
+{
   print "Hi " + first + " " + last + "!";
   return 3;
 }
 
-fun count( n ) {
-  if( n >= 100 ) {
+fun count( n )
+{
+  if( n >= 100 )
+  {
     print "n should be less than 100";
     return;
   }
@@ -31,6 +34,31 @@ for( var x = 0; x <= 10; x = x + 1 ) {
   print fib( x );
 }
 
+{
+  var x = make_counter();
+
+  print counter;
+
+  print counter();
+
+  { 
+    {
+      var y = fib;
+      print x;
+    }
+
+    {
+      var z;
+      print z;
+      print count( x );
+    }
+
+
+  }
+
+
+}
+
 fun make_counter() {
   var i = 0;
   fun count() {
@@ -40,6 +68,6 @@ fun make_counter() {
   return count;
 }
 
-//var counter = make_counter();
-//counter();
-//counter();
+var counter = make_counter();
+counter();
+counter();

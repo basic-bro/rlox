@@ -30,6 +30,10 @@ impl EnvStack {
     }
   }
 
+  fn depth( &self ) -> usize {
+    self.stack.depth()
+  }
+
   pub fn enclose_new( &mut self, line: i32 ) {
     self.stack.push( RcMut::new( Env::new( line ) ) );
   }
@@ -40,7 +44,7 @@ impl EnvStack {
 
   pub fn clone_global( &self ) -> EnvStack {
     let mut global = EnvStack::new();
-    global.stack.push( self.stack.peek( self.stack.depth() - 1 ).clone() );
+    global.stack.push( self.stack.peek( self.depth() - 1 ).clone() );
     global
   }
 

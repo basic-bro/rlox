@@ -18,6 +18,7 @@ mod eval;
 mod error;
 mod env;
 mod resolver;
+mod scope;
 
 
 /////////
@@ -40,14 +41,21 @@ use crate::util::*;
 //////////////////////
 
 pub struct Interpreter {
-  str_lookup: StringCache
+  // sc: RcMut<StringCache>,
+  scanner: Scanner,
+  parser: Parser,
+  resolver: Resolver,
 }
 
 impl Interpreter {
 
   pub fn new() -> Interpreter {
+    let sc = RcMut::new( StringCache::new() );
     Interpreter {
-      str_lookup: StringCache::new()
+      // sc: sc.clone(),
+      scanner: Scanner::new( sc.clone() ),
+      parser: Parser::new( sc.clone() ),
+      resolver: Resolver::new( sc.clone() ),
     }
   }
 
@@ -98,26 +106,25 @@ impl Interpreter {
   fn run( &mut self, src: String ) -> ( Eval, bool ) {
 
     // scanner / lexer
-    let mut scanner = Scanner::new( &mut self.str_lookup );
-    let ( tokens, had_error ) = scanner.scan( src );
+    let ( tokens, had_error ) = self.scanner.scan( src );
     if had_error {
       return ( Eval::Nil, true );
     }
 
     // parser
-    let mut parser = Parser::new( &mut self.str_lookup );
-    let ( decls, had_error ) = parser.parse( tokens );
+    let ( decls, had_error ) = self.parser.parse( tokens );
     if had_error {
       return ( Eval::Nil, true );
     }
 
     // resolver
-    // let mut resolver = Resolver::new( &mut self.str_lookup );
-    // resolver.resolve( decls );
+    self.resolver.resolve( &decls );
+
+    ( Eval::Nil, false )
 
     // executor
-    let mut executor = Executor::new( &mut self.str_lookup );
-    executor.exec( decls )
+    // let mut executor = Executor::new( &mut self.str_lookup );
+    // executor.exec( decls )
   }
   
 }
