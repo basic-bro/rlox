@@ -29,6 +29,12 @@ impl Scope {
       line
     }
   }
+  pub fn get_rsolns( &self ) -> &HashMap<StringKey, i32> {
+    &self.rsolns
+  }
+  pub fn get_line( &self ) -> i32 {
+    self.line
+  }
   pub fn add_local_symbol( &mut self, symbol_key: StringKey ) {
     self.rsolns.insert( symbol_key, 0 );
   }
@@ -38,8 +44,8 @@ impl Scope {
     }
   }
   pub fn has_local( &self, symbol_key: StringKey ) -> bool {
-    if let Some( entry ) = self.rsolns.get( &symbol_key ) {
-      *entry == 0
+    if let Some( &entry ) = self.rsolns.get( &symbol_key ) {
+      entry == 0
     }
     else {
       false
@@ -48,34 +54,6 @@ impl Scope {
 }
 
 pub type ScopeTree = Tree<Scope>;
-
-pub struct ScopeTreeFormatter<'str> {
-  sc: &'str StringCache
-}
-
-impl<'str> ScopeTreeFormatter<'str> {
-  pub fn new( sc: &'str StringCache ) -> ScopeTreeFormatter<'str> {
-    ScopeTreeFormatter {
-      sc
-    }
-  }
-}
-
-impl<'str> TreeVisitor<Scope, String, String> for ScopeTreeFormatter<'str> {
-  fn visit_node( &self, db: &Tree<Scope>, node_key: u64, depth: u32 ) -> Result<String, String> {
-    let indent = " ".repeat( depth as usize );
-    let mut rsolns = String::new();
-    let node = db.read_node( node_key );
-    for extern_ in &node.rsolns {
-      rsolns.push_str( self.sc.gets( *extern_.0 ) );
-      rsolns.push_str( format!( " [{}] ", *extern_.1 ).as_str() );
-    }
-    Ok( format!( "{}Scope {} begins on line {} and has symbols: {}", indent, node_key, node.line, rsolns ) )
-  }
-  fn fold( &self, parent_result: &String, children_results: &Vec<String> ) -> String {
-    parent_result.to_owned() + "\n" + &children_results.join( "\n" )
-  }
-}
 
 // finalises the scope tree
 pub struct ScopeTreeResolver { }
@@ -86,11 +64,11 @@ impl ScopeTreeResolver {
   }
 }
 
-impl TreeVisitorMut<Scope, (), String> for ScopeTreeResolver {
-  fn visit_node( &self, tree: &mut Tree<Scope>, node_key: u64, _depth: u32 ) -> Result<(), String> {
+impl TreeMutVisitor<Scope, (), String> for ScopeTreeResolver {
+  fn map_mut( &self, tree: &mut Tree<Scope>, node_key: u64, _depth: u32 ) -> Result<(), String> {
 
+    // go back through this node's ancestry, looking for symbols defined therein
     let mut parent_key_stack = tree.get_parent_key_stack( node_key );
-
     let mut curr_jumps = 1;
     loop {
 
@@ -126,5 +104,5 @@ impl TreeVisitorMut<Scope, (), String> for ScopeTreeResolver {
     Ok( () )
   }
 
-  fn fold( &self, _parent_result: &(), _children_results: &Vec<()> ) -> () { }
+  fn fold_mut( &self, _parent_result: &(), _children_results: &Vec<()> ) -> () { }
 }

@@ -182,7 +182,7 @@ pub struct Stack<T> {
 impl<T> Stack<T> {
 
   pub fn new() -> Stack<T> {
-    Stack { vec: vec![] }
+    Stack { vec: Vec::new() }
   }
 
   pub fn is_empty( &self ) -> bool {
@@ -253,23 +253,21 @@ pub struct Tree<N> {
 }
 
 pub trait TreeVisitor<N, T, E> {
-  fn visit_node( &self, db: &Tree<N>, node_key: u64, depth: u32 ) -> Result<T, E>;
+  fn map( &self, db: &Tree<N>, node_key: u64, depth: u32 ) -> Result<T, E>;
   fn fold( &self, parent_result: &T, children_results: &Vec<T> ) -> T;
 }
 
-pub trait TreeVisitorMut<N, T, E> {
-  fn visit_node( &self, db: &mut Tree<N>, node_key: u64, depth: u32 ) -> Result<T, E>;
-  fn fold( &self, parent_result: &T, children_results: &Vec<T> ) -> T;
+pub trait TreeMutVisitor<N, T, E> {
+  fn map_mut( &self, db: &mut Tree<N>, node_key: u64, depth: u32 ) -> Result<T, E>;
+  fn fold_mut( &self, parent_result: &T, children_results: &Vec<T> ) -> T;
 }
 
 pub trait TreeVisitorTgt<N, T, E> {
-  fn accept<V: TreeVisitor<N, T, E>>( &self, visitor: &V ) -> Result<T, E>;
-  fn accept_node<V: TreeVisitor<N, T, E>>( &self, visitor: &V, node_key: u64, depth: u32 ) -> Result<T, E>;
+  fn map_fold<V: TreeVisitor<N, T, E>>( &self, visitor: &V, node_key: u64, depth: u32 ) -> Result<T, E>;
 }
 
-pub trait TreeVisitorMutTgt<N, T, E> {
-  fn accept_mut<V: TreeVisitorMut<N, T, E>>( &mut self, visitor: &V ) -> Result<T, E>;
-  fn accept_node_mut<V: TreeVisitorMut<N, T, E>>( &mut self, visitor: &V, node_key: u64, depth: u32 ) -> Result<T, E>;
+pub trait TreeMutVisitorTgt<N, T, E> {
+  fn map_fold_mut<V: TreeMutVisitor<N, T, E>>( &mut self, visitor: &V, node_key: u64, depth: u32 ) -> Result<T, E>;
 }
 
 impl<N> Tree<N> {
@@ -371,20 +369,16 @@ impl<N> Tree<N> {
 }
 
 impl<N, T, E> TreeVisitorTgt<N, T, E> for Tree<N> {
-  fn accept<V: TreeVisitor<N, T, E>>( &self, visitor: &V ) -> Result<T, E> {
-    self.accept_node( visitor, 0, 0 )
-  }
-
-  fn accept_node<V: TreeVisitor<N, T, E>>( &self, visitor: &V, node_key: u64, depth: u32 ) -> Result<T, E> {
+  fn map_fold<V: TreeVisitor<N, T, E>>( &self, visitor: &V, node_key: u64, depth: u32 ) -> Result<T, E> {
 
     // visit the given node
-    let parent_result = visitor.visit_node( self, node_key, depth )?;
+    let parent_result = visitor.map( self, node_key, depth )?;
 
     // visit its children
     let mut children_results: Vec<T> = Vec::new();
     if self.has_children( node_key ) {
       for child_key in self.get_children( node_key ) {
-        children_results.push( self.accept_node( visitor, *child_key, depth + 1 )? );
+        children_results.push( self.map_fold( visitor, *child_key, depth + 1 )? );
       }
     }
 
@@ -393,25 +387,21 @@ impl<N, T, E> TreeVisitorTgt<N, T, E> for Tree<N> {
   }
 }
 
-impl<N, T, E> TreeVisitorMutTgt<N, T, E> for Tree<N> {
-  fn accept_mut<V: TreeVisitorMut<N, T, E>>( &mut self, visitor: &V ) -> Result<T, E> {
-    self.accept_node_mut( visitor, 0, 0 )
-  }
-
-  fn accept_node_mut<V: TreeVisitorMut<N, T, E>>( &mut self, visitor: &V, node_key: u64, depth: u32 ) -> Result<T, E> {
+impl<N, T, E> TreeMutVisitorTgt<N, T, E> for Tree<N> {
+  fn map_fold_mut<V: TreeMutVisitor<N, T, E>>( &mut self, visitor: &V, node_key: u64, depth: u32 ) -> Result<T, E> {
 
     // visit the given node
-    let parent_result = visitor.visit_node( self, node_key, depth )?;
+    let parent_result = visitor.map_mut( self, node_key, depth )?;
 
     // visit its children
     let mut children_results: Vec<T> = Vec::new();
     if self.has_children( node_key ) {
       for child_key in self.get_children( node_key ).clone() {
-        children_results.push( self.accept_node_mut( visitor, child_key, depth + 1 )? );
+        children_results.push( self.map_fold_mut( visitor, child_key, depth + 1 )? );
       }
     }
 
     // success if we get to here!
-    Ok( visitor.fold( &parent_result, &children_results ) )
+    Ok( visitor.fold_mut( &parent_result, &children_results ) )
   }
 }

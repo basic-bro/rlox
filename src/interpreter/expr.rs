@@ -15,6 +15,7 @@ use crate::interpreter::eval::*;
 use crate::interpreter::env::*;
 use crate::interpreter::executor::*;
 use crate::interpreter::stmt::*;
+use crate::interpreter::format::*;
 
 use crate::util::*;
 
@@ -36,13 +37,13 @@ pub enum Expr {
 
 impl Expr {
   pub fn to_string( &self, sc: &StringCache ) -> String {
-    match self.accept( &mut ExprFormatter::new( sc ) ) {
+    match self.map_fold( &mut ExprFormatter::new( sc ) ) {
       Ok( s ) => s,
       Err( error ) => error.msg
     }
   }
   pub fn eval( &self, sc: &mut StringCache, envs: &EnvStack ) -> EvalResult {
-    self.accept( &mut ExprEvaluator::new( sc, envs ) )
+    self.map_fold( &mut ExprEvaluator::new( sc, envs ) )
   }
 }
 
@@ -51,123 +52,113 @@ impl Expr {
 // private implementation //
 ////////////////////////////
 
-trait ExprVisitor<T, E> {
-  fn visit_assignment( &self, var: &Token, right: T ) -> Result<T, E>;
-  fn visit_binary( &self, left: T, op: &Token, right: T ) -> Result<T, E>;
-  fn visit_call( &mut self, callee: T, paren: &Token, args: &Vec<T> ) -> Result<T, E>;
-  fn visit_grouping( &self, expr: T ) -> Result<T, E>;
-  fn visit_literal( &self, literal: &Token ) -> Result<T, E>;
-  fn visit_unary( &self, op: &Token, expr: T ) -> Result<T, E>;
-  fn visit_symbol( &self, symbol: &Token ) -> Result<T, E>;
+pub trait ExprVisitor<T, E> {
+  fn fold_assignment( &self, var: &Token, right: T ) -> Result<T, E>;
+  fn fold_binary( &self, left: T, op: &Token, right: T ) -> Result<T, E>;
+  fn fold_mut_call( &mut self, callee: T, paren: &Token, args: &Vec<T> ) -> Result<T, E>;
+  fn fold_grouping( &self, expr: T ) -> Result<T, E>;
+  fn fold_literal( &self, literal: &Token ) -> Result<T, E>;
+  fn fold_unary( &self, op: &Token, expr: T ) -> Result<T, E>;
+  fn fold_symbol( &self, symbol: &Token ) -> Result<T, E>;
 }
 
-trait ExprVisitorTgt<T, E> {
-  fn accept<V: ExprVisitor<T, E>>( &self, visitor: &mut V ) -> Result<T, E>;
+pub trait ExprVisitorTgt<T, E> {
+  fn map_fold<V: ExprVisitor<T, E>>( &self, visitor: &mut V ) -> Result<T, E>;
+}
+
+pub trait ExprVisitorMut<T, E> {
+  fn fold_mut_assignment( &mut self, symbol_name: &Token, right: T ) -> Result<T, E>;
+  fn fold_mut_binary( &mut self, left: T, op: &Token, right: T ) -> Result<T, E>;
+  fn fold_mut_call( &mut self, callee: T, paren: &Token, args: &Vec<T> ) -> Result<T, E>;
+  fn fold_mut_grouping( &mut self, expr: T ) -> Result<T, E>;
+  fn fold_mut_literal( &mut self, literal: &Token ) -> Result<T, E>;
+  fn fold_mut_unary( &mut self, op: &Token, expr: T ) -> Result<T, E>;
+  fn fold_mut_symbol( &mut self, symbol_name: &Token ) -> Result<T, E>;
+}
+
+pub trait ExprVisitorMutTgt<T, E> {
+  fn map_fold_mut<V: ExprVisitorMut<T, E>>( &self, visitor: &mut V ) -> Result<T, E>;
 }
 
 impl<T, E> ExprVisitorTgt<T, E> for Expr {
-  fn accept<V: ExprVisitor<T, E>>( &self, visitor: &mut V ) -> Result<T, E> {
+  fn map_fold<V: ExprVisitor<T, E>>( &self, visitor: &mut V ) -> Result<T, E> {
     match self {
       Self::Assignment( var, right ) => {
-        let rv = right.accept( visitor )?;
-        visitor.visit_assignment( var, rv )
+        let rv = right.map_fold( visitor )?;
+        visitor.fold_assignment( var, rv )
       },
       Self::Binary( left, op , right ) => {
-        let lv = left.accept( visitor )?;
-        let rv = right.accept( visitor )?;
-        visitor.visit_binary( lv, op, rv )
+        let lv = left.map_fold( visitor )?;
+        let rv = right.map_fold( visitor )?;
+        visitor.fold_binary( lv, op, rv )
       },
       Self::Call( callee, paren , args ) => {
-        let cv = callee.accept( visitor )?;
+        let cv = callee.map_fold( visitor )?;
         let mut avs: Vec<T> = Vec::new();
         for arg in args {
-          let av = arg.accept( visitor )?;
+          let av = arg.map_fold( visitor )?;
           avs.push( av );
         }
-        visitor.visit_call( cv, paren, &avs )
+        visitor.fold_mut_call( cv, paren, &avs )
       }
       Self::Grouping( inner ) => {
-        let iv = inner.accept( visitor )?;
-        visitor.visit_grouping( iv )
+        let iv = inner.map_fold( visitor )?;
+        visitor.fold_grouping( iv )
       },
       Self::Literal( literal ) => {
-        visitor.visit_literal( literal )
+        visitor.fold_literal( literal )
       },
       Self::Unary( op, expr ) => {
-        let ev = expr.accept( visitor )?;
-        visitor.visit_unary( op, ev )
+        let ev = expr.map_fold( visitor )?;
+        visitor.fold_unary( op, ev )
       },
       Self::Symbol( op ) => {
-        visitor.visit_symbol( op )
+        visitor.fold_symbol( op )
       }
     }
   }
 }
 
-pub struct ExprFormatter<'str> {
-  sc: &'str StringCache
-}
-
-impl<'str> ExprFormatter<'str> {
-  pub fn new( sc: &'str StringCache ) -> ExprFormatter<'str> {
-    ExprFormatter {
-      sc
-    }
-  }
-}
-
-impl<'str> ExprVisitor<String, Error> for ExprFormatter<'str> {
-  fn visit_assignment( &self, var: &Token, right: String ) -> Result<String, Error> {
-      Ok( format!( "{} = {}", var.get_lexeme( self.sc ), right ) )
-  }
-  fn visit_binary( &self, left: String, op: &Token, right: String ) -> Result<String, Error> {
-    Ok( format!( "{} {} {}", left, op.get_lexeme( self.sc ), right ) )
-  }
-  fn visit_call( &mut self, callee: String, _paren: &Token, args: &Vec<String> ) -> Result<String, Error> {
-
-    let no_args = args.len() == 0;
-
-    let mut params = if no_args {
-      "(".to_string()
-    } else {
-      "( ".to_string()
-    };
-
-    for ( idx, arg ) in args.iter().enumerate() {
-      if idx == 0 {
-        params.push_str( arg.as_str() );
-      } else {
-        params.push_str( format!( ", {}", arg ).as_str() );
+impl<T, E> ExprVisitorMutTgt<T, E> for Expr {
+  fn map_fold_mut<V: ExprVisitorMut<T, E>>( &self, visitor: &mut V ) -> Result<T, E> {
+    match self {
+      Self::Assignment( var, right ) => {
+        let rv = right.map_fold_mut( visitor )?;
+        visitor.fold_mut_assignment( var, rv )
+      },
+      Self::Binary( left, op , right ) => {
+        let lv = left.map_fold_mut( visitor )?;
+        let rv = right.map_fold_mut( visitor )?;
+        visitor.fold_mut_binary( lv, op, rv )
+      },
+      Self::Call( callee, paren , args ) => {
+        let cv = callee.map_fold_mut( visitor )?;
+        let mut avs: Vec<T> = Vec::new();
+        for arg in args {
+          let av = arg.map_fold_mut( visitor )?;
+          avs.push( av );
+        }
+        visitor.fold_mut_call( cv, paren, &avs )
+      }
+      Self::Grouping( inner ) => {
+        let iv = inner.map_fold_mut( visitor )?;
+        visitor.fold_mut_grouping( iv )
+      },
+      Self::Literal( literal ) => {
+        visitor.fold_mut_literal( literal )
+      },
+      Self::Unary( op, expr ) => {
+        let ev = expr.map_fold_mut( visitor )?;
+        visitor.fold_mut_unary( op, ev )
+      },
+      Self::Symbol( op ) => {
+        visitor.fold_mut_symbol( op )
       }
     }
-
-    if no_args {
-      params.push_str( ")" );
-    } else {
-      params.push_str( " )" );
-    }
-
-    Ok( format!( "{}{}", callee, params ) )
-  }
-  fn visit_grouping( &self, expr: String ) -> Result<String, Error> {
-    Ok( format!( "( {} )", expr ) )
-  }
-  fn visit_literal( &self, literal: &Token ) -> Result<String, Error> {
-    Ok(
-      match literal.get_type() {
-        TokenType::String( s )
-          => format!( "\"{}\"", self.sc.gets( *s ) ),
-        _ => format!( "{}", literal.get_lexeme( self.sc ) )
-      }
-    )
-  }
-  fn visit_unary( &self, op: &Token, expr: String ) -> Result<String, Error> {
-    Ok( format!( "{}{}", op.get_lexeme( self.sc ), expr ) )
-  }
-  fn visit_symbol( &self, var: &Token ) -> Result<String, Error> {
-    Ok( format!( "{}", var.get_lexeme( self.sc ) ) )
   }
 }
+
+
 
 pub struct ExprEvaluator<'str, 'env> {
   sc: &'str mut StringCache,
@@ -192,11 +183,11 @@ impl<'str, 'env> ExprEvaluator<'str, 'env> {
 
 impl<'str, 'env> ExprVisitor<Eval, EvalError> for ExprEvaluator<'str, 'env> {
 
-  fn visit_assignment( &self, _: &Token, right: Eval ) -> Result<Eval, EvalError> {
+  fn fold_assignment( &self, _: &Token, right: Eval ) -> Result<Eval, EvalError> {
     Ok( right )
   }
 
-  fn visit_binary( &self, left: Eval, op: &Token, right: Eval ) -> Result<Eval, EvalError> {
+  fn fold_binary( &self, left: Eval, op: &Token, right: Eval ) -> Result<Eval, EvalError> {
     match op.get_type() {
 
       // first, evaluate any logical operator
@@ -281,7 +272,7 @@ impl<'str, 'env> ExprVisitor<Eval, EvalError> for ExprEvaluator<'str, 'env> {
     }
   }
 
-  fn visit_call( &mut self, callee: Eval, paren: &Token, args: &Vec<Eval> ) -> Result<Eval, EvalError> {
+  fn fold_mut_call( &mut self, callee: Eval, paren: &Token, args: &Vec<Eval> ) -> Result<Eval, EvalError> {
 
     // if working correctly, callee will be an Eval::Fun
     // from which we can invoke the function call.
@@ -318,11 +309,11 @@ impl<'str, 'env> ExprVisitor<Eval, EvalError> for ExprEvaluator<'str, 'env> {
     }
   }
 
-  fn visit_grouping( &self, expr: Eval ) -> Result<Eval, EvalError> {
+  fn fold_grouping( &self, expr: Eval ) -> Result<Eval, EvalError> {
     Ok( expr )
   }
 
-  fn visit_literal( &self, literal: &Token ) -> Result<Eval, EvalError> {
+  fn fold_literal( &self, literal: &Token ) -> Result<Eval, EvalError> {
     match literal.get_type() {
       TokenType::String( s ) => Ok( Eval::StringLiteral( self.sc.gets( *s ).to_string() ) ),
       TokenType::Number( s ) => Ok( Eval::Number( self.sc.gets( *s ).parse::<f64>().unwrap() ) ),
@@ -334,7 +325,7 @@ impl<'str, 'env> ExprVisitor<Eval, EvalError> for ExprEvaluator<'str, 'env> {
     }
   }
 
-  fn visit_unary( &self, op: &Token, expr: Eval ) -> Result<Eval, EvalError> {
+  fn fold_unary( &self, op: &Token, expr: Eval ) -> Result<Eval, EvalError> {
     match op.get_type() {
       TokenType::Bang => Ok( Eval::Bool( !expr.is_truthy() ) ),
       TokenType::Minus => match expr {
@@ -347,7 +338,7 @@ impl<'str, 'env> ExprVisitor<Eval, EvalError> for ExprEvaluator<'str, 'env> {
     }
   }
 
-  fn visit_symbol( &self, var: &Token ) -> Result<Eval, EvalError> {
+  fn fold_symbol( &self, var: &Token ) -> Result<Eval, EvalError> {
     match var.get_type() {
       TokenType::Identifier( id ) => {
 
@@ -363,48 +354,3 @@ impl<'str, 'env> ExprVisitor<Eval, EvalError> for ExprEvaluator<'str, 'env> {
     }
   }
 }
-
-
-
-
-
-// pub trait ExprVisitorMut<T, E> {
-//   fn visit_assignment( &self, var: &Token, right: T ) -> Result<T, E>;
-//   fn visit_binary( &self, left: T, op: &Token, right: T ) -> Result<T, E>;
-//   fn visit_call( &mut self, callee: T, paren: &Token, args: &Vec<T> ) -> Result<T, E>;
-//   fn visit_grouping( &self, expr: T ) -> Result<T, E>;
-//   fn visit_literal( &self, literal: &Token ) -> Result<T, E>;
-//   fn visit_unary( &self, op: &Token, expr: T ) -> Result<T, E>;
-//   fn visit_symbol( &self, symbol: &Token ) -> Result<T, E>;
-// }
-
-// impl Expr {
-  // pub fn visit_mut<T, E, V: ExprVisitorMut<T, E>>( &self, visitor: &mut V ) -> Result<T, E>
-  // {
-  //   match self {
-  //     Self::Assignment( var, right )
-  //       => { let rv = right.visit_mut( visitor )?; visitor.visit_assignment( var, rv ) },
-  //     Self::Binary( left, op , right )
-  //       => { let lv = left.visit_mut( visitor )?; let rv = right.visit_mut( visitor )?;
-  //         visitor.visit_binary( lv, op, rv ) },
-  //     Self::Call( callee, paren , args )
-  //       => { let cv = callee.visit_mut( visitor )?; let va = self.visit_mut_args( visitor, args )?; visitor.visit_call( cv, paren, &va ) },
-  //     Self::Grouping( inner )
-  //       => { let iv = inner.visit_mut( visitor )?; visitor.visit_grouping( iv ) },
-  //     Self::Literal( literal )
-  //       => visitor.visit_literal( literal ),
-  //     Self::Unary( op, expr )
-  //       => { let ev = expr.visit_mut( visitor )?; visitor.visit_unary( op, ev ) },
-  //     Self::Symbol( op )
-  //       => visitor.visit_symbol( op )
-  //   }
-  // }
-
-  // fn visit_mut_args<T, E, V: ExprVisitorMut<T, E>>( &self, visitor: &mut V, args: &Vec<Box<Expr>> ) -> Result<Vec<T>, E> {
-  //   let mut results: Vec<T> = vec![];
-  //   for arg in args {
-  //     results.push( arg.visit_mut( visitor )? );
-  //   }
-  //   Ok( results )
-  // }
-// }

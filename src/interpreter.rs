@@ -18,7 +18,8 @@ mod eval;
 mod error;
 mod env;
 mod resolver;
-mod scope;
+mod scope_tree;
+mod format;
 
 
 /////////
