@@ -16,9 +16,9 @@ use crate::interpreter::stmt::*;
 use crate::util::*;
 
 
-//////////////////////
-// public interface //
-//////////////////////
+//////////////////
+// declarations //
+//////////////////
 
 pub struct Parser {
   sc: RcMut<StringCache>,
@@ -32,8 +32,12 @@ type ParseExprResult = Result<Expr, Error>;
 type ParseStmtResult = Result<Stmt, Error>;
 type ParseDeclResult = Result<Decl, Error>;
 
-impl Parser {
 
+/////////////////////
+// implementations //
+/////////////////////
+
+impl Parser {
   pub fn new( sc: RcMut<StringCache> ) -> Parser {
     Parser{
       sc,
@@ -43,7 +47,6 @@ impl Parser {
       had_error: false
     }  
   }
-
   pub fn parse( &mut self, tokens: Vec<Token> ) -> ( Vec<Decl>, bool ) {
     self.restart( tokens );
     while !self.is_at_end() {
@@ -70,12 +73,6 @@ impl Parser {
     self.decls.clear();
     ( decls, self.had_error )
   }
- 
-
-  ////////////////////////////
-  // private implementation //
-  ////////////////////////////
-  
   fn restart( &mut self, tokens: Vec<Token> ) {
     self.tokens = tokens;
     self.decls.clear();
@@ -156,7 +153,6 @@ impl Parser {
     
     return Ok( Decl::Var( id, tail ) );
   }
-
   fn parse_id( &mut self ) -> Result<Token, Error> {
     match self.peek_type() {
       TokenType::Identifier( _ ) => { Ok( *self.pop() ) },
@@ -535,9 +531,7 @@ impl Parser {
     // println!( "parse_call() returning expr = {}", expr.to_string( self.sm ) );
     Ok( expr )
   }
-
   fn parse_arguments( &mut self, callee: Expr ) -> ParseExprResult {
-
     let mut args: Vec<Box<Expr>> = vec![];
     let paren =
       if !self.pop_if( TokenType::RightParen ) {
@@ -551,9 +545,6 @@ impl Parser {
       } else {
         *self.previous()
       };
-
-    
-
     Ok( Expr::Call( Box::new( callee ), paren, args ) )
   }
   
@@ -581,23 +572,18 @@ impl Parser {
       Err( self.make_error( format!( "Expected a primary expression here." ) ) )
     }
   }
-
   fn is_fun_decl( &self ) -> bool {
     self.peek_type() == TokenType::Fun
   }
-
   fn is_var_decl( &self ) -> bool {
     self.peek_type() == TokenType::Var
   }
-
   fn is_or( &self ) -> bool {
     self.peek_type() == TokenType::Or
   }
-
   fn is_and( &self ) -> bool {
     self.peek_type() == TokenType::And
   }
-
   fn is_eq( &self ) -> bool {
     match self.peek_type() {
       TokenType::BangEqual
@@ -606,7 +592,6 @@ impl Parser {
       _ => false
     }
   }
-
   fn is_cmp( &self ) -> bool {
     match self.peek_type() {
       TokenType::Greater
@@ -617,7 +602,6 @@ impl Parser {
       _ => false
     }
   }
-
   fn is_term( &self ) -> bool {
     match self.peek_type() {
       TokenType::Minus
@@ -626,7 +610,6 @@ impl Parser {
       _ => false
     }
   }
-
   fn is_factor( &self ) -> bool {
     match self.peek_type() {
       TokenType::Slash
@@ -635,7 +618,6 @@ impl Parser {
       _ => false
     }
   }
-
   fn is_id( &self ) -> bool {
     if let TokenType::Identifier( _ ) = self.peek_type() {
       true
@@ -644,7 +626,6 @@ impl Parser {
       false
     }
   }
-
   fn is_unary( &self ) -> bool {
     match self.peek_type() {
       TokenType::Bang
@@ -653,11 +634,9 @@ impl Parser {
       _ => false
     }
   }
-
   fn is_grouping( &self ) -> bool {
     self.peek_type() == TokenType::LeftParen
   }
-
   fn is_primary( &self ) -> bool {
     match self.peek_type() {
       TokenType::False
@@ -670,14 +649,12 @@ impl Parser {
       _ => false
     }
   }
-
   fn pop( &mut self ) -> &Token {
     if !self.is_at_end() {
       self.current += 1;
     }
     self.previous()
   }
-
   fn pop_assert( &mut self, tt: TokenType, loc: &str ) -> Result<&Token, Error> {
     if self.peek_type() != tt {
       Err( self.make_error( format!( "Expected '{}'{}", tt.get_lexeme( &self.sc.view() ), loc ) ) )
@@ -686,7 +663,6 @@ impl Parser {
       Ok( self.pop() )
     }
   }
-
   fn pop_if( &mut self, tt: TokenType ) -> bool {
     if self.peek_type() == tt {
       self.pop();
@@ -695,7 +671,6 @@ impl Parser {
       false
     }
   }
-
   fn peek( &self ) -> &Token {
     if self.is_at_end() {
       self.previous()
@@ -704,11 +679,9 @@ impl Parser {
       self.tokens.get( self.current ).unwrap()
     }
   }
-
   fn peek_type( &self ) -> TokenType {
     *self.peek().get_type()
   }
-
   fn peek_assert( &mut self, tt: TokenType, loc: &str ) -> Result<(), Error> {
     if self.peek_type() != tt {
       Err( self.make_error( format!( "Expected '{}'{}", tt.get_lexeme( &self.sc.view() ), loc ) ) )
@@ -717,23 +690,18 @@ impl Parser {
       Ok( () )
     }
   }
-
   fn previous( &self ) -> &Token {
     assert!( self.current > 0 && self.current - 1 < self.tokens.len() );
     self.tokens.get( self.current - 1 ).unwrap()
   }
-
   fn is_at_end( &self ) -> bool {
     self.current >= self.tokens.len()
   }
-
   fn make_error( &self, msg: String ) -> Error {
     Error::from_token( self.peek(), msg, &self.sc.view() )
   }
-
   fn emit_error( &mut self, error: &Error ) {
     eprintln!( "[line {}] Error{}: {}", error.line, error.loc, error.msg );
     self.had_error = true;
   }
-
 }

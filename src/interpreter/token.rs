@@ -10,9 +10,9 @@
 use crate::util::*;
 
 
-//////////////////////
-// public interface //
-//////////////////////
+//////////////////
+// declarations //
+//////////////////
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum TokenType {
@@ -30,8 +30,18 @@ pub enum TokenType {
   Eof
 }
 
-impl TokenType {
+#[derive(Debug, Clone, Copy)]
+pub struct Token {
+  token_type: TokenType,
+  line: i32
+}
 
+
+/////////////////////
+// implementations //
+/////////////////////
+
+impl TokenType {
   pub fn get_lexeme<'str>( &self, sc: &'str StringCache ) -> &'str str {
     match self {
       Self::LeftParen => "(",
@@ -75,7 +85,6 @@ impl TokenType {
       Self::Eof => "[end-of-file]"
     }
   }
-
   pub fn get_key( &self ) -> StringKey {
     match self {
       Self::Identifier( identifier ) => *identifier,
@@ -84,38 +93,25 @@ impl TokenType {
       _ => panic!( "The caller of get_key() assumes responsibility for checking that the given token has a key." )
     }
   }
-
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Token {
-  token_type: TokenType,
-  line: i32
 }
 
 impl Token {
-
   pub fn new( token_type: TokenType, line: i32 ) -> Token {
     Token {
       token_type,
       line
     }
   }
-
   pub fn get_lexeme<'str>( &self, sc: &'str StringCache ) -> &'str str {
     self.token_type.get_lexeme( sc )
   }
-
   pub fn get_type( &self ) -> &TokenType {
     &self.token_type
   }
-
   pub fn get_line( &self ) -> i32 {
     self.line
   }
-
   pub fn get_key( &self ) -> StringKey {
     self.token_type.get_key()
-  }
-  
+  } 
 }

@@ -13,9 +13,10 @@ use crate::interpreter::stmt::*;
 
 use crate::util::*;
 
-//////////////////////
-// public interface //
-//////////////////////
+
+//////////////////
+// declarations //
+//////////////////
 
 #[derive(Debug, Clone)]
 pub enum Eval {
@@ -26,14 +27,17 @@ pub enum Eval {
   Fun( /* args: */ Vec<StringKey>, /* body: */ Stmt )
 }
 
+
+/////////////////////
+// implementations //
+/////////////////////
+
 impl Eval {
   pub fn is_truthy( &self ) -> bool {
     match self {
-
       // "nil" and "false" are falsey
       Eval::Nil => false,
       Eval::Bool( false ) => false,
-
       // everything else is truthy
       _ => true
     }

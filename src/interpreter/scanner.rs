@@ -11,9 +11,9 @@ use crate::util::*;
 use crate::interpreter::token::*;
 
 
-//////////////////////
-// public interface //
-//////////////////////
+//////////////////
+// declarations //
+//////////////////
 
 pub struct Scanner {
   sc: RcMut<StringCache>,
@@ -25,8 +25,11 @@ pub struct Scanner {
   had_error: bool
 }
 
-impl Scanner {
+/////////////////////
+// implementations //
+/////////////////////
 
+impl Scanner {
   pub fn keyword( value: &str ) -> Option<TokenType> {
     match value {
       "and" => Some( TokenType::And ),
@@ -48,7 +51,6 @@ impl Scanner {
       _ => None
     }
   }
-
   pub fn new( sc: RcMut<StringCache> ) -> Scanner {
     Scanner {
       sc,
@@ -60,7 +62,6 @@ impl Scanner {
       had_error: false
     }
   }
-
   pub fn scan( &mut self, src: String ) -> ( Vec<Token>, bool ) {
     self.restart( src );
     while !self.is_at_end() {
@@ -72,12 +73,6 @@ impl Scanner {
     self.tokens.clear();
     ( tokens, self.had_error )
   }
-
-
-  ////////////////////////////
-  // private implementation //
-  ////////////////////////////
-   
   fn restart( &mut self, src: String ) {
     self.src = src;
     self.tokens.clear();
@@ -85,7 +80,6 @@ impl Scanner {
     self.current = 0;
     self.line = 1;
   }
-
   fn scan_token( &mut self ) {
     match self.advance() {
       '(' => self.add_token( TokenType::LeftParen ),
@@ -123,12 +117,10 @@ impl Scanner {
                  }          
     }
   }
-
   fn double_char_token( &mut self, second_char: char, double_token: TokenType, single_token: TokenType ) {
     let did_advance = self.advance_if( second_char );
     self.add_token( ifte( did_advance, double_token, single_token ) );
   }
-
   fn string( &mut self ) {
     let begin = self.line;
     while self.peek() != '"' && !self.is_at_end() {
@@ -149,7 +141,6 @@ impl Scanner {
     let key = self.sc.view_mut().puts( value );
     self.add_token( TokenType::String( key ) );
   }
-
   fn number( &mut self ) {
     while is_digit( self.peek() ) {
       self.advance();
@@ -166,7 +157,6 @@ impl Scanner {
     let key = self.sc.view_mut().puts( value );
     self.add_token( TokenType::Number( key ) );
   }
-
   fn identifer( &mut self ) {
     while is_alphanumeric( self.peek() ) {
       self.advance();
@@ -180,12 +170,10 @@ impl Scanner {
       None => self.add_token( TokenType::Identifier( key ) ),
     }
   }
-
   fn advance( &mut self ) -> char {
     self.current += 1;
     char_at( &self.src, self.current - 1 ).unwrap()
   }
-
   fn advance_if( &mut self, expected: char ) -> bool {
     if self.is_at_end() {
       return false;
@@ -197,7 +185,6 @@ impl Scanner {
     self.current += 1;
     true
   }
-
   fn add_token( &mut self, token_type: TokenType ) {
     self.tokens.push(
       Token::new(
@@ -206,7 +193,6 @@ impl Scanner {
       )
     );
   }
-
   fn peek( &self ) -> char {
     if self.is_at_end() {
       '\0'
@@ -214,7 +200,6 @@ impl Scanner {
       char_at( &self.src, self.current ).unwrap()
     }
   }
-
   fn peek_next( &self ) -> char {
     if self.current + 1 >= self.src.len() {
       '\0'
@@ -222,14 +207,11 @@ impl Scanner {
       char_at( &self.src, self.current + 1 ).unwrap()
     }
   }
-
   fn is_at_end( &self ) -> bool {
     self.current >= self.src.len()
   }
-
   fn emit_error( &mut self, loc: &str, message: &str ) {
     eprintln!( "[line {}] Error{}: {}", self.line, loc, message );
     self.had_error = true;
   }
-
 }

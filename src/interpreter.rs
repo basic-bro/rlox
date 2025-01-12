@@ -37,9 +37,9 @@ use crate::interpreter::resolver::*;
 use crate::util::*;
 
 
-//////////////////////
-// public interface //
-//////////////////////
+//////////////////
+// declarations //
+//////////////////
 
 pub struct Interpreter {
   // sc: RcMut<StringCache>,
@@ -48,8 +48,12 @@ pub struct Interpreter {
   resolver: Resolver,
 }
 
-impl Interpreter {
 
+/////////////////////
+// implementations //
+/////////////////////
+
+impl Interpreter {
   pub fn new() -> Interpreter {
     let sc = RcMut::new( StringCache::new() );
     Interpreter {
@@ -59,7 +63,6 @@ impl Interpreter {
       resolver: Resolver::new( sc.clone() ),
     }
   }
-
   pub fn run_file( &mut self, path: &str ) {
     let file = fs::read_to_string( path );
     match file {
@@ -75,11 +78,9 @@ impl Interpreter {
       },
       Err( e ) => eprintln!( "Error reading file: {}", e )
     }
-  }
-  
+  } 
   pub fn run_prompt( &mut self ) {
-    let stdin = io::stdin();
-      
+    let stdin = io::stdin();   
     loop {
       print!( "\n> " );
       let _ = io::stdout().flush();
@@ -98,12 +99,6 @@ impl Interpreter {
       }
     }
   }
-
-
-  ////////////////////////////
-  // private implementation //
-  ////////////////////////////
-  
   fn run( &mut self, src: String ) -> ( Eval, bool ) {
 
     // scanner / lexer
@@ -127,8 +122,4 @@ impl Interpreter {
     // let mut executor = Executor::new( &mut self.str_lookup );
     // executor.exec( decls )
   }
-  
 }
-
-
-
