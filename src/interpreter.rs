@@ -17,9 +17,12 @@ mod executor;
 mod eval;
 mod error;
 mod env;
-mod resolver;
 mod scope_tree;
 mod format;
+mod module;
+mod visitor;
+mod runtime;
+mod ast;
 
 
 /////////
@@ -32,8 +35,9 @@ use std::{io, io::BufRead, io::Write};
 use crate::interpreter::eval::*;
 use crate::interpreter::scanner::*;
 use crate::interpreter::parser::*;
-use crate::interpreter::executor::*;
-use crate::interpreter::resolver::*;
+use crate::interpreter::module::*;
+use crate::interpreter::ast::*;
+
 use crate::util::*;
 
 
@@ -42,10 +46,9 @@ use crate::util::*;
 //////////////////
 
 pub struct Interpreter {
-  // sc: RcMut<StringCache>,
+  sc: RcMut<StringCache>,
   scanner: Scanner,
   parser: Parser,
-  resolver: Resolver,
 }
 
 
@@ -57,10 +60,9 @@ impl Interpreter {
   pub fn new() -> Interpreter {
     let sc = RcMut::new( StringCache::new() );
     Interpreter {
-      // sc: sc.clone(),
+      sc: sc.clone(),
       scanner: Scanner::new( sc.clone() ),
       parser: Parser::new( sc.clone() ),
-      resolver: Resolver::new( sc.clone() ),
     }
   }
   pub fn run_file( &mut self, path: &str ) {
@@ -113,10 +115,17 @@ impl Interpreter {
       return ( Eval::Nil, true );
     }
 
-    // resolver
-    self.resolver.resolve( &decls );
+    // ast
+    let mut ast = AST::new( &self.sc );
+    ast.add_decls( decls );
+    let scope_tree = match ast.build_scope_tree() {
+        Some( tree ) => tree,
+        None => return ( Eval::Nil, true ),
+    };
 
-    ( Eval::Nil, false )
+    // module
+    let module = Module::new( ast, scope_tree );
+    module.exec()
 
     // executor
     // let mut executor = Executor::new( &mut self.str_lookup );

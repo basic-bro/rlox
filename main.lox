@@ -8,16 +8,18 @@ fun count( n )
 {
   if( n >= 100 )
   {
+    var peacock = "a bird";
     print "n should be less than 100";
     return;
   }
 
-  while( n < 100 ) {
+  while( var m = -3; n < 100 ) {
     if( n == 3 ) {
       return n;
     }
+
     print n;
-    n = n + 1;
+    n = n + m;
   }
 
 }
@@ -34,12 +36,13 @@ for( var x = 0; x <= 10; x = x + 1 ) {
   print fib( x );
 }
 
+
+
 {
-  var x = make_counter();
+  var x = "make_counter()";
+  //print counter;
 
-  print counter;
-
-  print counter();
+  //print counter();
 
   { 
     {
@@ -50,7 +53,7 @@ for( var x = 0; x <= 10; x = x + 1 ) {
     {
       var z;
       print z;
-      print count( x );
+      //print count( x );
     }
 
 
@@ -60,6 +63,7 @@ for( var x = 0; x <= 10; x = x + 1 ) {
 }
 
 fun make_counter() {
+  print "make_counter";
   var i = 0;
   fun count() {
     i = i + 1;
@@ -68,6 +72,6 @@ fun make_counter() {
   return count;
 }
 
-var counter = make_counter();
-counter();
-counter();
+//var counter = make_counter();
+//counter();
+//counter();

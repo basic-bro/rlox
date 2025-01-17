@@ -13,6 +13,8 @@ use crate::interpreter::expr::*;
 use crate::interpreter::token::*;
 use crate::interpreter::error::*;
 use crate::interpreter::scope_tree::*;
+use crate::interpreter::env::*;
+use crate::interpreter::visitor::*;
 
 
 //////////////////
@@ -25,6 +27,10 @@ pub struct ExprFormatter<'str> {
 
 pub struct ScopeTreeFormatter<'str> {
   sc: &'str StringCache
+}
+
+pub struct EnvTreeFormatter {
+  sc: RcMut<StringCache>
 }
 
 
@@ -40,14 +46,17 @@ impl<'str> ExprFormatter<'str> {
   }
 }
 
-impl<'str> ExprFolder<String, Error> for ExprFormatter<'str> {
-  fn fold_assignment( &mut self, var: &Token, right: String ) -> Result<String, Error> {
+impl<'str> ExprMapFolder<String, Error> for ExprFormatter<'str> {
+  fn map_expr( &mut self, _expr: &Expr ) -> MapFolderState<String, Error> {
+    MapFolderState::Incomplete
+  }
+  fn fold_expr_assignment( &mut self, var: &Token, right: String ) -> Result<String, Error> {
       Ok( format!( "{} = {}", var.get_lexeme( self.sc ), right ) )
   }
-  fn fold_binary( &mut self, left: String, op: &Token, right: String ) -> Result<String, Error> {
+  fn fold_expr_binary( &mut self, left: String, op: &Token, right: String ) -> Result<String, Error> {
     Ok( format!( "{} {} {}", left, op.get_lexeme( self.sc ), right ) )
   }
-  fn fold_call( &mut self, callee: String, _paren: &Token, args: &Vec<String> ) -> Result<String, Error> {
+  fn fold_expr_call( &mut self, callee: String, _paren: &Token, args: &Vec<String> ) -> Result<String, Error> {
 
     let no_args = args.len() == 0;
 
@@ -73,10 +82,10 @@ impl<'str> ExprFolder<String, Error> for ExprFormatter<'str> {
 
     Ok( format!( "{}{}", callee, params ) )
   }
-  fn fold_grouping( &mut self, expr: String ) -> Result<String, Error> {
+  fn fold_expr_grouping( &mut self, expr: String ) -> Result<String, Error> {
     Ok( format!( "( {} )", expr ) )
   }
-  fn fold_literal( &mut self, literal: &Token ) -> Result<String, Error> {
+  fn fold_expr_literal( &mut self, literal: &Token ) -> Result<String, Error> {
     Ok(
       match literal.get_type() {
         TokenType::String( s )
@@ -85,10 +94,10 @@ impl<'str> ExprFolder<String, Error> for ExprFormatter<'str> {
       }
     )
   }
-  fn fold_unary( &mut self, op: &Token, expr: String ) -> Result<String, Error> {
+  fn fold_expr_unary( &mut self, op: &Token, expr: String ) -> Result<String, Error> {
     Ok( format!( "{}{}", op.get_lexeme( self.sc ), expr ) )
   }
-  fn fold_symbol( &mut self, var: &Token ) -> Result<String, Error> {
+  fn fold_expr_symbol( &mut self, var: &Token ) -> Result<String, Error> {
     Ok( format!( "{}", var.get_lexeme( self.sc ) ) )
   }
 }
@@ -106,12 +115,31 @@ impl<'str> TreeFolder<Scope, String, String> for ScopeTreeFormatter<'str> {
     let indent = " ".repeat( depth as usize );
     let mut rsolns = String::new();
     let node = db.read_node( node_key );
-    for extern_ in node.get_rsolns() {
-      rsolns.push_str( self.sc.gets( *extern_.0 ) );
-      rsolns.push_str( format!( " [{}] ", *extern_.1 ).as_str() );
+    for jump_entry in node.read_jump_table() {
+      rsolns.push_str( self.sc.gets( *jump_entry.0 ) );
+      rsolns.push_str( format!( " [{}] ", *jump_entry.1 ).as_str() );
     }
     Ok( format!( "{}Scope {} begins on line {} and has symbols: {}", indent, node_key, node.get_line(), rsolns ) )
   }
+  fn fold( &self, parent_result: &String, children_results: &Vec<String> ) -> String {
+    parent_result.to_owned() + "\n" + &children_results.join( "\n" )
+  }
+}
+
+impl EnvTreeFormatter {
+  pub fn new( sc: &RcMut<StringCache> ) -> EnvTreeFormatter {
+    EnvTreeFormatter {
+      sc: sc.clone()
+    }
+  }
+}
+
+impl TreeFolder<Env, String, String> for EnvTreeFormatter {
+  fn map( &self, db: &Tree<Env>, node_key: u64, depth: u32 ) -> Result<String, String> {
+    let indent = " ".repeat( depth as usize );
+    Ok( format!( "{}{}", indent, db.read_node( node_key ).debug_format( &self.sc.view() ) ) )
+  }
+
   fn fold( &self, parent_result: &String, children_results: &Vec<String> ) -> String {
     parent_result.to_owned() + "\n" + &children_results.join( "\n" )
   }

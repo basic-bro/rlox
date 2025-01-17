@@ -14,6 +14,13 @@ use std::{cell::{Ref, RefCell, RefMut}, collections::HashMap, hash::{DefaultHash
 // miscellaneous //
 ///////////////////
 
+pub fn assert( condition: bool, msg: String ) {
+  if !condition {
+    eprintln!( "{}", msg );
+    panic!();
+  }
+}
+
 pub fn substring<'a>( s: &'a str, start: usize, len: usize ) -> Option<&'a str> {
   if start < s.len() && ( start + len - 1 ) < s.len() {
       Some( &s[ start .. ( start + len ) ] )
@@ -192,6 +199,9 @@ impl<T> Stack<T> {
   pub fn is_empty( &self ) -> bool {
     self.vec.is_empty()
   }
+  pub fn iter( &self ) -> std::slice::Iter<T> {
+    self.vec.iter()
+  }
   fn assert_non_empty( &self ) {
     if self.is_empty() {
       panic!( "Stack is empty, so cannot pop() or peek()." );
@@ -265,6 +275,16 @@ pub trait TreeFolderTgt<N, T, E> {
   fn map_fold<V: TreeFolder<N, T, E>>( &self, visitor: &V, node_key: u64, depth: u32 ) -> Result<T, E>;
 }
 
+pub trait TreeVisitor<N, E> {
+  fn visit( &mut self, db: &Tree<N>, node_key: u64, depth: u32 ) -> Result<(), E>;
+  fn before_children( &mut self, db: &Tree<N>, node_key: u64, depth: u32 );
+  fn after_children( &mut self, db: &Tree<N>, node_key: u64, depth: u32 );
+}
+
+pub trait TreeVisitorTgt<N, E> {
+  fn accept<V: TreeVisitor<N, E>>( &self, visitor: &mut V, node_key: u64, depth: u32 ) -> Result<(), E>;
+}
+
 pub trait TreeMutVisitor<N, E> {
   fn visit( &mut self, db: &mut Tree<N>, node_key: u64, depth: u32 ) -> Result<(), E>;
   fn before_children( &mut self, db: &mut Tree<N>, node_key: u64, depth: u32 );
@@ -305,6 +325,21 @@ impl<N> Tree<N> {
 
     // add child to self.nodes
     let child_key = self.use_key();
+    self.nodes.insert( child_key, node );
+
+    // update parent's list of children
+    if self.children.contains_key( &parent_key ) {
+      self.children.get_mut( &parent_key ).unwrap().push( child_key );
+    } else {
+      self.children.insert( parent_key, vec![ child_key ] );
+    }
+    
+    // return child key
+    child_key
+  }
+  pub fn add_node_with_key( &mut self, parent_key: u64, node: N, child_key: u64 ) -> u64 {
+
+    // add child to self.nodes
     self.nodes.insert( child_key, node );
 
     // update parent's list of children
@@ -358,6 +393,20 @@ impl<N, T, E> TreeFolderTgt<N, T, E> for Tree<N> {
   }
 }
 
+impl<N, E> TreeVisitorTgt<N, E> for Tree<N> {
+  fn accept<V: TreeVisitor<N, E>>( &self, visitor: &mut V, node_key: u64, depth: u32 ) -> Result<(), E> {
+    visitor.visit( self, node_key, depth )?;
+    visitor.before_children( self, node_key, depth );
+    if self.has_children( node_key ) {
+      for child_key in self.get_children( node_key ).clone() {
+        self.accept( visitor, child_key, depth + 1 )?;
+      }
+    }
+    visitor.after_children( self, node_key, depth );
+    Ok( () )
+  }
+}
+
 impl<N, E> TreeMutVisitorTgt<N, E> for Tree<N> {
   fn accept_mut<V: TreeMutVisitor<N, E>>( &mut self, visitor: &mut V, node_key: u64, depth: u32 ) -> Result<(), E> {
     visitor.visit( self, node_key, depth )?;
@@ -367,7 +416,7 @@ impl<N, E> TreeMutVisitorTgt<N, E> for Tree<N> {
         self.accept_mut( visitor, child_key, depth + 1 )?;
       }
     }
-    visitor.after_children( self, node_key, depth);
+    visitor.after_children( self, node_key, depth );
     Ok( () )
   }
 }

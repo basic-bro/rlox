@@ -24,7 +24,7 @@ pub enum Eval {
   StringLiteral( String ),
   Bool( bool ),
   Nil,
-  Fun( /* args: */ Vec<StringKey>, /* body: */ Stmt )
+  Fun( /* name: */ StringKey, /* args: */ Vec<StringKey>, /* body: */ Stmt )
 }
 
 
@@ -48,7 +48,7 @@ impl Eval {
       Eval::StringLiteral( _ ) => "String".to_string(),
       Eval::Bool( _ ) => "Bool".to_string(),
       Eval::Nil => "Nil".to_string(),
-      Eval::Fun( args, _ ) => format!( "Fun<{}>", args.len() )
+      Eval::Fun( _, args, _ ) => format!( "Fun<{}>", args.len() )
     }
   }
 }
@@ -60,7 +60,7 @@ impl Display for Eval {
       Self::StringLiteral( s ) => write!( f, "{}", s ),
       Self::Bool( b ) => write!( f, "{}", b ),
       Self::Nil => write!( f, "nil" ),
-      Self::Fun( args, _ ) => write!( f, "fun<{}>", args.len() )
+      Self::Fun( _, args, _ ) => write!( f, "fun<{}>", args.len() )
     }
   }
 }

@@ -7,12 +7,13 @@
 // use //
 /////////
 
-use std::cell::{Ref, RefMut};
 use std::collections::HashMap;
 
 use crate::util::*;
 
 use crate::interpreter::eval::*;
+use crate::interpreter::scope_tree::*;
+// use crate::interpreter::format::*;
 
 
 //////////////////
@@ -22,24 +23,91 @@ use crate::interpreter::eval::*;
 #[derive(Clone)]
 pub struct Env {
   db: HashMap<StringKey, Eval>,
+  scope_key: u64,
+  child_idx: u32,
   line: i32
 }
 
-pub struct EnvStack {
-  stack: Stack<RcMut<Env>>
-}
+pub type EnvStack = Stack<RcMut<Env>>;
+
+// pub type EnvTree = Tree<Env>;
+
+// creates an EnvTree instance that matches a given ScopeTree instance
+// node keys are the same
+// pub struct EnvTreeBuilder {
+//   env_tree: RcMut<EnvTree>
+// }
 
 
 /////////////////////
 // implementations //
 /////////////////////
 
+// impl EnvTreeBuilder {
+//   pub fn new() -> EnvTreeBuilder {
+//     EnvTreeBuilder {
+//       env_tree: RcMut::new( EnvTree::new( Env::new( 0, 0 ) ) )
+//     }
+//   }
+//   pub fn get_tree( &mut self ) -> RcMut<EnvTree> {
+//     self.env_tree.clone()
+//   }
+// }
+
+// impl TreeVisitor<Scope, ()> for EnvTreeBuilder {
+//   fn visit( &mut self, scope_tree: &Tree<Scope>, node_key: u64, _depth: u32 ) -> Result<(), ()> {
+
+//     // add each local in the Scope to the Env
+//     for ( &symbol_key, &jump ) in scope_tree.read_node( node_key ).read_jump_table() {
+//       if jump == 0 {
+//         self.env_tree.view_mut().write_node( node_key ).create_symbol( symbol_key, Eval::Nil );
+//       }
+//     }
+//     Ok( () )
+//   }
+//   fn before_children( &mut self, scope_tree: &Tree<Scope>, node_key: u64, _depth: u32 ) {
+
+//     // early return: no children to copy
+//     if !scope_tree.has_children( node_key ) {
+//       return;
+//     } 
+
+//     // create children in the EnvTree so visit() method above works
+//     for &child_key in scope_tree.get_children( node_key ) {
+//       let new_key = self.env_tree.view_mut().add_node_with_key( node_key, Env::new( child_key, scope_tree.read_node( child_key ).get_line() ), child_key );
+//       assert!( new_key == child_key );
+//     }
+//   }
+//   fn after_children( &mut self, _scope_tree: &Tree<Scope>, _node_key: u64, _depth: u32 ) { }
+// }
+
+
 impl Env {
-  pub fn new( line: i32 ) -> Env {
+  pub fn new( scope_key: u64, line: i32 ) -> Env {
     Env {
       db: HashMap::new(),
+      scope_key,
+      child_idx: 0,
       line
     }
+  }
+  pub fn from_scope_tree( scope_tree: &RcMut<ScopeTree>, scope_key: u64 ) -> Env {
+    let mut env = Env::new( scope_key, scope_tree.view().read_node( scope_key ).get_line() );
+    for ( &symbol_key, &jump ) in scope_tree.view().read_node( scope_key ).read_jump_table() {
+      if jump == 0 {
+        env.create_symbol( symbol_key, Eval::Nil );
+      }
+    }
+    env
+  }
+  pub fn read_ip( &self ) -> ( u64, u32 ) {
+    ( self.scope_key, self.child_idx )
+  }
+  pub fn adv_ip( &mut self ) {
+    self.child_idx += 1;
+  }
+  pub fn rev_ip( &mut self ) {
+    self.child_idx -= 1;
   }
   pub fn has_symbol( &self, key: StringKey ) -> bool {
     self.db.contains_key( &key )
@@ -66,85 +134,21 @@ impl Env {
       panic!( "Internal error: Unknown key. [ The caller of write_var() assumes responsibility for verifying that the key exists. ]" )
     }
   }
-  fn debug_print( &self, sc: &StringCache ) {
-    print!( "\nEnv beginning on line {} has {} entries:", self.line, self.db.len() );
+  pub fn debug_format( &self, sc: &StringCache ) -> String {
+    let mut fmt = format!( "Env beginning on line {} has {} entries:", self.line, self.db.len() );
     for ( key, value ) in &self.db {
-      print!( "\n  {} = {}", sc.gets( *key ), value );
+      fmt.push_str( format!( " {} = {}", sc.gets( *key ), value ).as_str() );
     }
+    fmt
   }
-}
-
-
-impl EnvStack {
-  pub fn new() -> EnvStack {
-    EnvStack {
-      stack: Stack::new()
-    }
-  }
-  fn depth( &self ) -> usize {
-    self.stack.depth()
-  }
-  pub fn enclose_new( &mut self, line: i32 ) {
-    self.stack.push( RcMut::new( Env::new( line ) ) );
-  }
-  pub fn drop_enclosed( &mut self ) {
-    self.stack.pop();
-  }
-  pub fn clone_global( &self ) -> EnvStack {
-    let mut global = EnvStack::new();
-    global.stack.push( self.stack.peek( self.depth() - 1 ).clone() );
-    global
-  }
-  fn peek( &self, depth: usize ) -> Ref<Env> {
-    self.stack.peek( depth ).view()
-  }
-  fn peek_mut( &mut self, depth: usize ) -> RefMut<Env> {
-    self.stack.peek_mut( depth ).view_mut()
-  }
-  fn curr( &self ) -> Ref<Env> {
-    self.peek( 0 )
-  }
-  fn curr_mut( &mut self ) -> RefMut<Env> {
-    self.peek_mut( 0 )
-  }
-  pub fn has_symbol_here( &self, symbol_key: StringKey ) -> bool {
-    self.curr().has_symbol( symbol_key )
-  }
-  pub fn has_symbol( &self, symbol_key: StringKey ) -> bool {
-    for depth in 0..self.stack.depth() {
-      if self.peek( depth ).has_symbol(symbol_key ) {
-        return true;
-      }
-    }
-    false
-  }
-  pub fn create_symbol( &mut self, symbol_key: StringKey, eval: Eval ) {
-    assert!( !self.has_symbol_here( symbol_key ) );
-    self.curr_mut().create_symbol( symbol_key, eval );
-  }
-  pub fn write_symbol( &mut self, symbol_key: StringKey, eval: Eval ) {
-    assert!( self.has_symbol( symbol_key ) );
-    for depth in 0..self.stack.depth() {
-      if self.peek( depth ).has_symbol( symbol_key ) {
-        self.peek_mut( depth ).write_symbol( symbol_key, eval );
-        return;
-      }
-    }
-    assert!( false );
-  }
-  pub fn read_symbol( &self, symbol_key: StringKey ) -> Eval {
-    assert!( self.has_symbol( symbol_key ) );
-    for depth in 0..self.stack.depth() {
-      if self.peek( depth ).has_symbol( symbol_key ) {
-        return self.peek( depth ).read_symbol( symbol_key );
-      }
-    }
-    assert!( false );
-    Eval::Nil
-  }
-  pub fn debug_print( &self, sc: &StringCache ) {
-    for depth in 0..self.stack.depth() {
-      self.peek(depth).debug_print( sc );
-    }
-  }
+  // pub fn to_string( env_tree: EnvTree, sc: &RcMut<StringCache> ) -> String {
+  //   env_tree.map_fold( &EnvTreeFormatter::new( sc ), 0, 0 ).unwrap()
+  // }
+  // pub fn make_env_tree( scope_tree: &RcMut<ScopeTree> ) -> RcMut<EnvTree> {
+  //   let mut builder = EnvTreeBuilder::new();
+  //   match scope_tree.view().accept( &mut builder, 0, 0 ) {
+  //     Ok( _ ) => builder.get_tree(),
+  //     Err( _ ) => panic!( "EnvTreeBuilder doesn't fail?" ),
+  //   }
+  // }
 }
