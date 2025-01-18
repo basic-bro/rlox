@@ -167,7 +167,7 @@ impl DeclMapFolder<Eval, EvalError> for Executor {
         for param_name in param_names {
           param_keys.push( param_name.get_key() );
         }
-        let result = Eval::Fun( fun_name.get_key(), param_keys, body.clone() );
+        let result = Eval::Fun( fun_name.get_key(), param_keys, body.clone(), self.rt.view().read_env_stack().clone() );
         self.write_env_symbol( fun_name.get_key(), result.clone() );
         MapFolderState::Complete( Ok( result ) )
       },
@@ -352,7 +352,7 @@ impl ExprMapFolder<Eval, EvalError> for Executor {
 
     // if working correctly, callee will be an Eval::Fun
     // from which we can invoke the function call.
-    if let Eval::Fun( fun_name_key, param_keys, body ) = callee {
+    if let Eval::Fun( fun_name_key, param_keys, body, closure ) = callee {
 
       //if let Stmt::Block( decls, line ) = body {
         
@@ -363,7 +363,7 @@ impl ExprMapFolder<Eval, EvalError> for Executor {
         }
 
         // prepare function scope
-        self.rt.view_mut().init_fun_call( fun_name_key, args );
+        self.rt.view_mut().init_fun_call( fun_name_key, args, closure );
         let exec_result = body.map_fold_stmt( self );
         self.rt.view_mut().finish_fun_call();
         match exec_result {

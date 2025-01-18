@@ -20,7 +20,7 @@ use crate::interpreter::scope_tree::*;
 // declarations //
 //////////////////
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Env {
   db: HashMap<StringKey, Eval>,
   scope_key: u64,

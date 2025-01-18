@@ -187,7 +187,7 @@ impl<T> Stream<T> {
 // Stack<T> //
 //////////////
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Stack<T> {
   vec: Vec<T>
 }
@@ -235,7 +235,7 @@ impl<T> Stack<T> {
 // RcMut<T> //
 //////////////
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct RcMut<T> {
   shared_ptr: Rc<RefCell<T>>
 }

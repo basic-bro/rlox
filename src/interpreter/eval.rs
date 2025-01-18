@@ -13,6 +13,8 @@ use crate::interpreter::stmt::*;
 
 use crate::util::*;
 
+use super::env::EnvStack;
+
 
 //////////////////
 // declarations //
@@ -24,7 +26,7 @@ pub enum Eval {
   StringLiteral( String ),
   Bool( bool ),
   Nil,
-  Fun( /* name: */ StringKey, /* args: */ Vec<StringKey>, /* body: */ Stmt )
+  Fun( /* name: */ StringKey, /* args: */ Vec<StringKey>, /* body: */ Stmt, /*closure:*/ EnvStack )
 }
 
 
@@ -48,7 +50,7 @@ impl Eval {
       Eval::StringLiteral( _ ) => "String".to_string(),
       Eval::Bool( _ ) => "Bool".to_string(),
       Eval::Nil => "Nil".to_string(),
-      Eval::Fun( _, args, _ ) => format!( "Fun<{}>", args.len() )
+      Eval::Fun( _, args, _, _ ) => format!( "Fun<{}>", args.len() )
     }
   }
 }
@@ -60,7 +62,7 @@ impl Display for Eval {
       Self::StringLiteral( s ) => write!( f, "{}", s ),
       Self::Bool( b ) => write!( f, "{}", b ),
       Self::Nil => write!( f, "nil" ),
-      Self::Fun( _, args, _ ) => write!( f, "fun<{}>", args.len() )
+      Self::Fun( _, args, _, _ ) => write!( f, "fun<{}>", args.len() )
     }
   }
 }

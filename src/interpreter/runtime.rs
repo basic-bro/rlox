@@ -64,42 +64,32 @@ impl Runtime {
       .get( child_idx as usize )
       .expect( "Internal error: Expected a child scope." )
   }
-  fn read_env_stack( &self ) -> &EnvStack {
+  pub fn read_env_stack( &self ) -> &EnvStack {
     self.call_stack.peek( 0 )
   }
   fn write_env_stack( &mut self ) -> &mut EnvStack {
     self.call_stack.peek_mut( 0 )
   }
-  pub fn init_fun_call( &mut self, fun_name_key: StringKey, args: &Vec<Eval> ) {
+  pub fn init_fun_call( &mut self, fun_name_key: StringKey, args: &Vec<Eval>, mut closure: EnvStack ) {
 
-    // prepare new EnvStack for the function ...
-    let mut fun_env_stack = EnvStack::new();
+    println!( "\nInitialising function call '{}'", self.sc.view().gets( fun_name_key ) );
 
-    // (1) copy from the current EnvStack the deepest Envs 
-    // up to and including the one where the function is defined.
-    for prev_env in self.call_stack.peek_mut( 0 ).iter().rev() {
-      fun_env_stack.push( prev_env.clone() );
-      if fun_env_stack.peek( 0 ).view().has_symbol( fun_name_key ) {
-        break;
-      }
-    }
+    // (1) get the function's definition
+    let fun = closure.peek( 0 ).view().read_symbol( fun_name_key );
+    if let Eval::Fun( _, param_keys, _, _ ) = fun {
 
-    // (2) get the function's definition
-    let fun = fun_env_stack.peek( 0 ).view().read_symbol( fun_name_key );
-    if let Eval::Fun( _, param_keys, _ ) = fun {
-
-      // (3) find the key to the function's parameter scope
-      let fun_scope_key = fun_env_stack.peek( 0 ).view().read_ip().0;
+      // (2) find the key to the function's parameter scope
+      let fun_scope_key = closure.peek( 0 ).view().read_ip().0;
       for child_scope_key in self.scope_tree.view().get_children( fun_scope_key ).clone() {
         if self.scope_tree.view().read_node( child_scope_key ).is_fun_scope_for( fun_name_key ) {
 
-          // (4) prepare the parameter env from the parameter scope
+          // (3) prepare the parameter env from the parameter scope
           let mut param_env = Env::from_scope_tree( &self.scope_tree, child_scope_key );
           for ( key, value ) in std::iter::zip( param_keys, args ) {
             param_env.write_symbol( key, value.clone() );
           }
-          fun_env_stack.push( RcMut::new( param_env ) );
-          self.call_stack.push( fun_env_stack );
+          closure.push( RcMut::new( param_env ) );
+          self.call_stack.push( closure );
 
           // the runtime now sees the function's parameter scope
           // as its current env

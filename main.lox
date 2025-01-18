@@ -33,13 +33,16 @@ fun fib( n ) {
 }
 
 for( var x = 0; x <= 10; x = x + 1 ) {
-  print fib( x );
+  uh_oh();
+}
+
+fun uh_oh() {
+  print "Uh oh!";
 }
 
 
-
 {
-  var x = "make_counter()";
+  var x = make_counter();
   //print counter;
 
   //print counter();
@@ -72,6 +75,6 @@ fun make_counter() {
   return count;
 }
 
-//var counter = make_counter();
-//counter();
-//counter();
+var counter = make_counter();
+counter();
+counter();
