@@ -13,7 +13,7 @@ fun count( n )
     return;
   }
 
-  while( var m = -3; n < 100 ) {
+  while( n < 100 ) {
     if( n == 3 ) {
       return n;
     }

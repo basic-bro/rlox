@@ -1,1 +1,5 @@
-I'm going through [Crafting Interpreters](https://craftinginterpreters.com/) by [Robert Nystrom](https://journal.stuffwithstuff.com/), implementing a Lox interpreter in Rust. Following the author's naming convention, the project is called `rlox`.
+I'm going through [Crafting Interpreters](https://craftinginterpreters.com/) by [Robert Nystrom](https://journal.stuffwithstuff.com/), implementing a Lox interpreter in Rust. (In fact, I'm using this experience in order to learn Rust.) Following the author's naming convention, the project is called `rlox`.
+
+Currently, the `main` branch is my first month's attempt at the tree walk interpreter. I had trouble understanding how the scope resolution was meant to work (plus I was also getting lost in tree visitor strategies/abstractions), so I looked at other repos doing the same thing as me. I found one by [fampiyush](https://github.com/fampiyush/rlox/tree/main) and was immediately humbled to see the simplicity of its construction, and learnt a few Rust idioms, too.
+
+Thus was born the `humbled` branch, an attempt at putting into practice my new learnings.
