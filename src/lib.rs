@@ -12,9 +12,14 @@ mod env;
 mod resolver;
 mod eval;
 
-use crate::eval::Eval;
-use crate::scanner::Scanner;
-use crate::parser::Parser;
+
+
+
+use eval::Eval;
+use scanner::Scanner;
+use parser::Parser;
+use resolver::Resolver;
+use interpreter::Interpreter;
 // use crate::interpreter::Interpreter;
 
 // pub fn new() -> Interpreter {
@@ -69,29 +74,30 @@ fn run( src: String ) -> ( Eval, bool ) {
 
   // scanner / lexer
   let mut scanner = Scanner::new();
-  let ( tokens, had_error ) = scanner.scan( src );
-  if had_error {
+  let ( tokens, had_scan_error ) = scanner.scan( src );
+  if had_scan_error {
     return ( Eval::Nil, true );
   }
 
   // parser
   let mut parser = Parser::new();
-  let ( decls, had_error ) = parser.parse( tokens );
-  // if had_error {
-    // return ( Eval::Nil, true );
-  // }
+  let ( mut stmts, had_parse_error ) = parser.parse( tokens );
+  if had_parse_error {
+    return ( Eval::Nil, true );
+  }
 
-  ( Eval::Nil, had_error )
+  // resolver
+  let mut resolver = Resolver::new();
+  let had_resolve_error = resolver.resolve( &mut stmts );
+  if had_resolve_error {
+    return ( Eval::Nil, true );
+  }
+
+  // execution
+
+  return ( Eval::Nil, false );
 
   
-
-//   // ast
-//   let mut ast = AST::new( &self.sc );
-//   ast.add_decls( decls );
-//   let scope_tree = match ast.build_scope_tree() {
-//       Some( tree ) => tree,
-//       None => return ( Eval::Nil, true ),
-//   };
 
 //   // module
 //   let module = Module::new( ast, scope_tree );

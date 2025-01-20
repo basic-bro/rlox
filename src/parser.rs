@@ -27,19 +27,9 @@ pub struct Parser {
 type ParseExprResult = Result<Expr, Error>;
 type ParseStmtResult = Result<Stmt, Error>;
 
-static mut UUID: usize = 0;
-
-
 /////////////////////
 // implementations //
 /////////////////////
-
-fn adv_uuid() -> usize {
-  unsafe {
-    UUID += 1;
-    UUID
-  }
-}
 
 impl Parser {
   pub fn new() -> Parser {
@@ -58,16 +48,11 @@ impl Parser {
       }
       let e = self.parse_decl();
       match e {
-        Ok( decl ) => {
-          self.stmts.push( decl );
+        Ok( stmt ) => {
+          self.stmts.push( stmt );
         },
         Err( error ) => {
-          if error.line > 0 {
-            self.emit_error( &error );
-          }
-          else {
-            eprintln!( "Ignoring error: {:?}", error );
-          }
+          self.emit_error( &error );
           break;
         }
       }
@@ -298,7 +283,6 @@ impl Parser {
     } else {
       // desugar condition
       Expr::Literal( Literal {
-        // uuid: adv_uuid(),
         value: Token {
           token_type: TokenType::True,
           line,
@@ -392,13 +376,12 @@ impl Parser {
 
     if self.peek_type() == TokenType::Equal {
       let equal = self.pop();
-      let value = self.parse_assign()?;
+      let rhs = self.parse_assign()?;
       match expr {
-        Expr::Variable( symbol ) => {
+        Expr::Variable( lhs ) => {
           Ok( Expr::Assign( Assign {
-            // uuid: adv_uuid(),
-            name: symbol.name,
-            value: Box::new( value )
+            lhs,
+            rhs: Box::new( rhs )
           } ) )
         }
         _ => Err( Error::from_token( &equal, "Cannot assign to the expression on the left hand side.".to_string() ) )
@@ -417,7 +400,6 @@ impl Parser {
         let operator = self.pop();
         let right = self.parse_and()?;
         expr = Expr::Binary( Binary {
-          // uuid: adv_uuid(),
           left: Box::new( expr ),
           operator,
           right: Box::new( right )
@@ -437,7 +419,6 @@ impl Parser {
         let operator = self.pop();
         let right = self.parse_eq()?;
         expr = Expr::Binary( Binary {
-          // uuid: adv_uuid(),
           left: Box::new( expr ),
           operator,
           right: Box::new( right )
@@ -457,7 +438,7 @@ impl Parser {
         let operator = self.pop();
         let right = self.parse_cmp()?;
         expr = Expr::Binary( Binary {
-          // uuid: adv_uuid(),
+          
           left: Box::new( expr ),
           operator,
           right: Box::new( right )
@@ -477,7 +458,6 @@ impl Parser {
         let operator = self.pop();
         let right = self.parse_term()?;
         expr = Expr::Binary( Binary {
-          // uuid: adv_uuid(),
           left: Box::new( expr ),
           operator,
           right: Box::new( right )
@@ -497,7 +477,6 @@ impl Parser {
         let operator = self.pop();
         let right = self.parse_factor()?;
         expr = Expr::Binary( Binary {
-          // uuid: adv_uuid(),
           left: Box::new( expr ),
           operator,
           right: Box::new( right )
@@ -517,7 +496,7 @@ impl Parser {
         let operator = self.pop();
         let right = self.parse_unary()?;
         expr = Expr::Binary( Binary {
-          // uuid: adv_uuid(),
+          
           left: Box::new( expr ),
           operator,
           right: Box::new( right )
@@ -533,7 +512,6 @@ impl Parser {
   fn parse_unary( &mut self ) -> ParseExprResult {
     if self.is_unary() {
         Ok( Expr::Unary( Unary {
-          // uuid: adv_uuid(),
           operator: self.pop().clone(),
           right: Box::new( self.parse_unary()? )
         } ) )
@@ -578,7 +556,7 @@ impl Parser {
         self.previous().clone()
       };
     Ok( Expr::Call( Call {
-      // uuid: adv_uuid(),
+      
       callee: Box::new( callee ),
       paren,
       arguments: args
@@ -590,7 +568,6 @@ impl Parser {
     if self.is_grouping() {
       self.pop();
       let expr = Expr::Grouping( Grouping {
-        // uuid: adv_uuid(),
         expression: Box::new( self.parse_expr()? )
       } );
       self.pop_assert( TokenType::RightParen, " to close the grouping." )?;
@@ -605,12 +582,11 @@ impl Parser {
     if self.is_primary() {
       if self.is_id() {
         Ok( Expr::Variable( Variable {
-          // uuid: adv_uuid(),
-          name: self.pop()
+          name: self.pop(),
+          jump: -1
         } ) )
       } else {
         Ok( Expr::Literal( Literal {
-          // uuid: adv_uuid(),
           value: self.pop()
         } ) )
       }

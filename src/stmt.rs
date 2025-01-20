@@ -24,6 +24,17 @@ pub trait Visitor<R> {
   fn visit_while_stmt( &mut self, while_: &While ) -> R;
 }
 
+pub trait MutVisitor<R> {
+  fn visit_block_stmt_mut( &mut self, block: &mut Block ) -> R;
+  fn visit_expression_stmt_mut( &mut self, expression: &mut Expression ) -> R;
+  fn visit_function_stmt_mut( &mut self, function: &mut Function ) -> R;
+  fn visit_if_stmt_mut( &mut self, if_: &mut If ) -> R;
+  fn visit_print_stmt_mut( &mut self, print: &mut Print ) -> R;
+  fn visit_return_stmt_mut( &mut self, return_: &mut Return ) -> R;
+  fn visit_var_stmt_mut( &mut self, var: &mut Var ) -> R;
+  fn visit_while_stmt_mut( &mut self, while_: &mut While ) -> R;
+}
+
 #[derive(Clone)]
 pub struct Block {
   pub statements: Vec<Stmt>,
@@ -83,6 +94,18 @@ impl Stmt {
       Stmt::Return( return_ ) => visitor.visit_return_stmt( return_ ),
       Stmt::Var( var ) => visitor.visit_var_stmt( var ),
       Stmt::While( while_ ) => visitor.visit_while_stmt( while_ ),
+    }
+  }
+  pub fn accept_mut<R, V: MutVisitor<R>>( &mut self, visitor: &mut V ) -> R {
+    match self {
+      Stmt::Block( block ) => visitor.visit_block_stmt_mut( block ),
+      Stmt::Expression( expression ) => visitor.visit_expression_stmt_mut( expression ),
+      Stmt::Function( function ) => visitor.visit_function_stmt_mut( function ),
+      Stmt::If( if_ ) => visitor.visit_if_stmt_mut( if_ ),
+      Stmt::Print( print ) => visitor.visit_print_stmt_mut( print ),
+      Stmt::Return( return_ ) => visitor.visit_return_stmt_mut( return_ ),
+      Stmt::Var( var ) => visitor.visit_var_stmt_mut( var ),
+      Stmt::While( while_ ) => visitor.visit_while_stmt_mut( while_ ),
     }
   }
 }
