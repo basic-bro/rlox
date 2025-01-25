@@ -15,17 +15,19 @@ use crate::error::Error;
 
 pub struct Resolver {
   scopes: Stack<HashMap<String, ResolveStatus>>,
+  global_init_order: Vec<String>,
   had_error: bool
 }
 
 struct ResolveStatus {
-  pub name_status: NameStatus,
-  pub is_read: bool
+  name_status: NameStatus,
+  is_read: bool,
+  decl_line: u32
 }
 
 #[derive(PartialEq)]
 enum NameStatus {
-  Declared( /* line: */ u32 ),
+  Declared,
   Defined
 }
 
@@ -35,11 +37,24 @@ enum NameStatus {
 /////////////////////
 
 impl ResolveStatus {
-  pub fn new( name_status: NameStatus ) -> ResolveStatus {
+  pub fn declare( line: u32 ) -> ResolveStatus {
     ResolveStatus {
-      name_status,
-      is_read: false
+      name_status: NameStatus::Declared,
+      is_read: false,
+      decl_line: line
     }
+  }
+  pub fn define( &mut self ) {
+    self.name_status = NameStatus::Defined;
+  }
+  pub fn mark_as_read( &mut self ) {
+    self.is_read = true;
+  }
+  pub fn is_unread( &self ) -> bool {
+    !self.is_read
+  }
+  pub fn get_line( &self ) -> u32 {
+    self.decl_line
   }
 }
 
@@ -47,53 +62,49 @@ impl Resolver {
   pub fn new() -> Resolver {
     Resolver {
       scopes: Stack::new(),
+      global_init_order: Vec::new(),
       had_error: false
     }
   }
   fn restart( &mut self ) {
-    self.scopes = Stack::new();
+    self.scopes.clear();
+    self.global_init_order.clear();
     self.had_error = false;
   }
   fn begin_scope( &mut self ) {
     self.scopes.push( HashMap::new() );
   }
   fn end_scope( &mut self ) {
+    self.warn_unused();
     self.scopes.pop();
   }
   fn declare_name( &mut self, name: &Token ) -> Result<(), Error> {
-    if self.scopes.is_empty() {
-      return Ok( () )
-    }
     let scope = self.scopes.peek_mut( 0 );
     if scope.contains_key( &name.lexeme ) {
       return Err( Error::from_token( &name, "Name already in use.".into() ) );
     }
-    scope.insert( name.lexeme.clone(), ResolveStatus::new( NameStatus::Declared( name.line ) ) );
+    scope.insert( name.lexeme.clone(), ResolveStatus::declare( name.line ) );
     Ok( () )
   }
   fn define_name( &mut self, name: &Token ) {
-    if self.scopes.is_empty() {
-      return;
-    }
-    self.scopes.peek_mut( 0 ).insert( name.lexeme.clone(), ResolveStatus::new( NameStatus::Defined ) );
+    self.scopes.peek_mut( 0 ).get_mut( &name.lexeme ).unwrap().define();
   }
   fn declare_define( &mut self, name: &Token ) -> Result<(), Error> {
     self.declare_name( name )?;
     self.define_name( name );
     Ok( () )
   }
-  fn resolve_variable( &mut self, variable: &mut Variable ) {
+  fn resolve_variable( &mut self, variable: &mut Variable ) -> Result<(), Error> {
     for depth in 0..self.scopes.depth() {
       if self.scopes.peek( depth ).contains_key( &variable.name.lexeme ) {
         variable.jump = depth as i32;
         // println!( "Resolved: '{}' on line {} is defined {} scope(s) back.",
         //   variable.name.lexeme, variable.name.line, variable.jump );
-          self.scopes.peek_mut( depth ).get_mut( &variable.name.lexeme ).unwrap().is_read = true;
-        return;
+        self.scopes.peek_mut( depth ).get_mut( &variable.name.lexeme ).unwrap().mark_as_read();
+        return Ok( () );
       }
     }
-    // println!( "Unresolved, assuming global: '{}' on line {}.",
-    //   variable.name.lexeme, variable.name.line );
+    Err( Error::from_token( &variable.name, "Undeclared symbol.".into() ) )
   }
   fn resolve_expr( &mut self, expr: &mut Expr ) -> Result<(), Error> {
     expr.accept_mut( self )
@@ -107,15 +118,21 @@ impl Resolver {
     }
     Ok( () )
   }
-  // fn warn_unused( &self ) {
-  // }
+  fn warn_unused( &self ) {
+    for ( name, status ) in self.scopes.peek( 0 ) {
+      if status.is_unread() {
+        eprintln!( "[line {}] Warning at '{}': Symbol is defined but never used.", status.get_line(), name );
+      }
+    }
+  }
   pub fn resolve( &mut self, stmts: &mut Vec<Stmt> ) -> bool {
     self.restart();
+    self.begin_scope();
     match self.resolve_stmts( stmts ) {
       Ok( _ ) => {},
       Err( e ) => self.emit_error( &e ),
     }
-    // self.warn_unused();
+    self.end_scope();
     self.had_error
   }
   fn emit_error( &mut self, error: &Error ) {
@@ -124,11 +141,12 @@ impl Resolver {
   }
 }
 
+
+
 impl expr::MutVisitor<Result<(), Error>> for Resolver {
   fn visit_assign_expr_mut( &mut self, assign: &mut expr::Assign ) -> Result<(), Error> {
     self.resolve_expr( &mut assign.rhs )?;
-    self.resolve_variable( &mut assign.lhs );
-    Ok( () )
+    self.resolve_variable( &mut assign.lhs )
   }
   fn visit_binary_expr_mut( &mut self, binary: &mut expr::Binary ) -> Result<(), Error> {
     self.resolve_expr( &mut binary.left )?;
@@ -147,24 +165,21 @@ impl expr::MutVisitor<Result<(), Error>> for Resolver {
   fn visit_literal_expr_mut( &mut self, _literal: &mut expr::Literal ) -> Result<(), Error> {
     Ok( () )
   }
-  fn visit_logical_expr_mut( &mut self, logical: &mut expr::Logical ) -> Result<(), Error> {
-    self.resolve_expr( &mut logical.left )?;
-    self.resolve_expr( &mut logical.right )
-  }
+  // fn visit_logical_expr_mut( &mut self, logical: &mut expr::Logical ) -> Result<(), Error> {
+  //   self.resolve_expr( &mut logical.left )?;
+  //   self.resolve_expr( &mut logical.right )
+  // }
   fn visit_unary_expr_mut( &mut self, unary: &mut expr::Unary ) -> Result<(), Error> {
     self.resolve_expr( &mut unary.right )
   }
   fn visit_variable_expr_mut( &mut self, variable: &mut expr::Variable ) -> Result<(), Error> {
-    if !self.scopes.is_empty() {
-      if let Some( status ) = self.scopes.peek( 0 ).get( &variable.name.lexeme ) {
-        if status.name_status != NameStatus::Defined {
-          return Err( Error::from_token( &variable.name,
-            "Cannot read a local variable in its own initialiser.".into() ) );
-        }
+    if let Some( status ) = self.scopes.peek( 0 ).get( &variable.name.lexeme ) {
+      if status.name_status != NameStatus::Defined {
+        return Err( Error::from_token( &variable.name,
+          "Cannot read a local variable in its own initialiser.".into() ) );
       }
     }
-    self.resolve_variable( variable );
-    Ok( () )
+    self.resolve_variable( variable )
   }
 }
 
@@ -210,7 +225,7 @@ impl stmt::MutVisitor<Result<(), Error>> for Resolver {
     if let Some( expr ) = &mut var.init {
       self.resolve_expr( expr )?;
     }
-    self.define_name( &var.name );
+      self.define_name( &var.name );
     Ok( () )
   }
   fn visit_while_stmt_mut( &mut self, while_: &mut stmt::While ) -> Result<(), Error> {

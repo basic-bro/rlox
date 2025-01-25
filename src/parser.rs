@@ -384,7 +384,8 @@ impl Parser {
             rhs: Box::new( rhs )
           } ) )
         }
-        _ => Err( Error::from_token( &equal, "Cannot assign to the expression on the left hand side.".to_string() ) )
+        _ => Err( Error::from_token( &equal,
+          "Cannot assign to the expression on the left hand side.".to_string() ) )
       }
     }
     else {

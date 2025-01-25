@@ -1,10 +1,6 @@
 use std::fmt::Display;
 
-use crate::stmt::Function;
-
-
-
-
+use crate::{env::Env, stmt::Function, util::RcMut};
 
 #[derive(Clone)]
 pub enum Eval {
@@ -12,7 +8,28 @@ pub enum Eval {
   StringLiteral( String ),
   Bool( bool ),
   Nil,
-  Fun( Function )
+  Fun( Function, RcMut<Env> )
+}
+
+impl Eval {
+  pub fn is_truthy( &self ) -> bool {
+    match self {
+      // "nil" and "false" are falsey
+      Eval::Nil => false,
+      Eval::Bool( false ) => false,
+      // everything else is truthy
+      _ => true
+    }
+  }
+  pub fn get_type_name( &self ) -> String {
+    match self {
+      Eval::Number( _ ) => "Number".to_string(),
+      Eval::StringLiteral( _ ) => "String".to_string(),
+      Eval::Bool( _ ) => "Bool".to_string(),
+      Eval::Nil => "Nil".to_string(),
+      Eval::Fun( f, _ ) => format!( "fun<{}>", f.params.len() )
+    }
+  }
 }
 
 impl Display for Eval {
@@ -22,7 +39,7 @@ impl Display for Eval {
       Eval::StringLiteral( s ) => write!( f, "{}", s ),
       Eval::Bool( b ) => write!( f, "{}", b ),
       Eval::Nil => write!( f, "nil" ),
-      Eval::Fun( function ) => write!( f, "{}<{}>()", function.name.lexeme, function.params.len() ),
+      Eval::Fun( function, _ ) => write!( f, "{}<{}>()", function.name.lexeme, function.params.len() ),
     }
   }
 }

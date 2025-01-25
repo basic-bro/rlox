@@ -2,69 +2,75 @@
 
 use std::collections::HashMap;
 
-use crate::{eval::Eval, util::RcMut, token::Token};
+use crate::{eval::Eval, token::Token, util::{assert, RcMut}};
 
 #[derive(Clone)]
 pub struct Env {
   enclosing: Option<RcMut<Env>>,
-  values: HashMap<String, Eval>
+  values: HashMap<String, Eval>,
+  depth: usize
 }
 
 impl Env {
-  pub fn new() -> Env {
-    Env {
-      enclosing: None,
-      values: HashMap::new()
+  pub fn create_global() -> RcMut<Env> {
+    RcMut::new(
+      Env {
+        enclosing: None,
+        values: HashMap::new(),
+        depth: 0
+      }
+    )
+  }
+  pub fn new_with_enclosing( enclosing: &RcMut<Env> ) -> RcMut<Env> {
+    // println!( "Enclosing new scope at depth {}", enclosing.view().depth + 1 );
+    RcMut::new(
+      Env {
+        enclosing: Some( enclosing.clone() ),
+        values: HashMap::new(),
+        depth: enclosing.view().depth + 1
+      }
+    )
+  }
+  pub fn drop_enclosed( env: &RcMut<Env> ) -> RcMut<Env> {
+    assert( env.view().depth > 0, "Internal error: Cannot drop global scope.".into() );
+    let result = env.view().enclosing.as_ref().unwrap().clone();
+    // println!( "Dropping scope at depth {}", env.view().depth );
+    let _ = env;
+    result
+  }
+  pub fn read_symbol_at( &self, name: &Token, jump: usize ) -> Eval {
+    assert( jump <= self.depth,
+      format!( "Cannot jump {} env(s) when my depth is {}!",
+        jump, self.depth ) );
+    if jump == 0 {
+      self.read_symbol( name )
+    } else {
+      self.enclosing.as_ref().unwrap().view().read_symbol_at( name, jump - 1 )
     }
   }
-  pub fn from_enclosing( env: &RcMut<Env> ) -> Env {
-    Env {
-      enclosing: Some( env.clone() ),
-      values: HashMap::new()
+  pub fn write_symbol_at( &mut self, name: &Token, jump: usize, value: &Eval ) {
+    assert( jump <= self.depth,
+      format!( "Cannot jump {} env(s) when my depth is {}!",
+        jump, self.depth ) );
+    if jump == 0 {
+      self.write_symbol( name, value )
+    } else {
+      self.enclosing.as_mut().unwrap().view_mut().write_symbol_at( name, jump - 1, value )
     }
   }
-  pub fn add_local( &mut self, name: Token, value: Eval ) {
-    self.values.insert( name.lexeme, value );
+  fn read_symbol( &self, name: &Token ) -> Eval {
+    assert( self.values.contains_key( &name.lexeme ), 
+      format!( "Internal error: Key '{}' not found at depth {} for reading. Was the symbol created?", name.lexeme, self.depth ) );
+    return self.values.get( &name.lexeme ).unwrap().clone()
   }
-  fn read_env( tgt: &RcMut<Env>, depth: usize ) -> RcMut<Env> {
-    if depth == 0 {
-      return tgt.clone();
-    } else if let Some( env ) = &tgt.view().enclosing {
-      return Self::read_env( env, depth - 1 );
-    }
-    println!( "Runtime error. Depth too big: '{}'", depth );
-    panic!()
+  fn write_symbol( &mut self, name: &Token, value: &Eval ) {
+    assert( self.values.contains_key( &name.lexeme ), 
+      format!( "Internal error: Key '{}' not found at depth {} for writing. Was the symbol created?", name.lexeme, self.depth ) );
+    self.values.insert( name.lexeme.clone(), value.clone() );
   }
-  fn write_env( tgt: &RcMut<Env>, depth: usize ) -> RcMut<Env> {
-    if depth == 0 {
-      return tgt.clone();
-    } else if let Some( env ) = &tgt.view().enclosing {
-      return Self::write_env( env, depth - 1 );
-    }
-    println!( "Runtime error. Depth too big: '{}'", depth );
-    panic!()
-  }
-  pub fn read_symbol_at( tgt: &RcMut<Env>, name: Token, depth: usize ) -> Eval {
-    Self::read_env( tgt, depth ).view().read_symbol( name )
-  }
-  pub fn write_symbol_at( tgt: &RcMut<Env>, name: Token, depth: usize, value: Eval ) {
-    Self::write_env( tgt, depth ).view_mut().write_symbol( name, value );
-  }
-  pub fn read_symbol( &self, name: Token ) -> Eval {
-    if self.values.contains_key( &name.lexeme ) {
-      return self.values.get( &name.lexeme ).unwrap().clone()
-    } else if let Some( env ) = self.enclosing.as_ref() {
-      return env.view().read_symbol( name )
-    }
-    println!( "Runtime error. Unknown variable: '{}'", name.lexeme );
-    panic!()
-  }
-  pub fn write_symbol( &mut self, name: Token, value: Eval ) {
-    if self.values.contains_key( &name.lexeme ) {
-      self.values.insert( name.clone().lexeme, value );
-    } else if let Some( env ) = self.enclosing.as_mut() {
-      env.view_mut().write_symbol( name.clone(), value );
-    }
-    println!( "Runtime error. Unknown variable: '{}'", name.lexeme );
+  pub fn create_symbol( &mut self, name: &Token, value: &Eval ) {
+    assert( !self.values.contains_key( &name.lexeme ), 
+      format!( "Internal error: Creating symbol '{}' at depth {}, but it already exists.", name.lexeme, self.depth ) );
+    self.values.insert( name.lexeme.clone(), value.clone() );
   }
 }

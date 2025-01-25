@@ -196,6 +196,9 @@ impl<T> Stack<T> {
   pub fn new() -> Stack<T> {
     Stack { vec: Vec::new() }
   }
+  pub fn clear( &mut self ) {
+    self.vec.clear();
+  }
   pub fn is_empty( &self ) -> bool {
     self.vec.is_empty()
   }

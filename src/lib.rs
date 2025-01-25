@@ -93,9 +93,11 @@ fn run( src: String ) -> ( Eval, bool ) {
     return ( Eval::Nil, true );
   }
 
-  // execution
+  // interpreter
+  let mut interpreter = Interpreter::new();
+  interpreter.interpret( &stmts )
 
-  return ( Eval::Nil, false );
+  
 
   
 

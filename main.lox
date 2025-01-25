@@ -9,7 +9,7 @@ fun count( n )
   if( n >= 100 )
   {
     var peacock = "a bird";
-    print "n should be less than 100";
+    print "n should be less than 100" + peacock;
     return;
   }
 
@@ -19,7 +19,7 @@ fun count( n )
     }
 
     print n;
-    n = n + m;
+    n = n + "string";
   }
 
 }
@@ -32,17 +32,20 @@ fun fib( n ) {
   return fib( n - 2 ) + fib( n - 1 );
 }
 
-for( var x = 0; x <= 10; x = x + 1 ) {
-  uh_oh();
-}
+
+say_hi( "Bobby", "Bunter" );
 
 fun uh_oh() {
   print "Uh oh!";
 }
 
+for( var t = 0; t < 10; t = t + 1 ) {
+  uh_oh();
+  print fib( t );
+}
 
 {
-  var x = make_counter();
+  var x = fib;
   //print counter;
 
   //print counter();
@@ -51,9 +54,11 @@ fun uh_oh() {
     {
       var y = fib;
       print x;
+      print y( 15 );
     }
 
     {
+      print x( 20 );
       var z;
       print z;
       //print count( x );
@@ -64,10 +69,10 @@ fun uh_oh() {
 
 }
 
-
 fun make_counter() {
   print "make_counter";
   var i = 0;
+  
   fun count() {
     i = i + 1;
     print i;
@@ -78,3 +83,9 @@ fun make_counter() {
 var counter = make_counter();
 counter();
 counter();
+
+
+count( 50 );
+
+
+
