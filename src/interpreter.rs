@@ -256,67 +256,67 @@ impl expr::Visitor<Result<Eval, EvalError>> for Interpreter {
 }
 
 impl stmt::Visitor<Result<Eval, EvalError>> for Interpreter {
-    fn visit_block_stmt( &mut self, block: &stmt::Block ) -> Result<Eval, EvalError> {
-      self.envs = Env::new_with_enclosing( &self.envs );
-      let mut result = Eval::Nil;
-      for stmt in &block.statements {
-        match self.interpret_stmt( stmt ) {
-          Ok( res ) => {
-            result = res;
-          },
-          Err( e ) => {
-            self.envs = Env::drop_enclosed( &self.envs );
-            return Err( e );      
-          },
-        }
-      }
-      self.envs = Env::drop_enclosed( &self.envs );
-      Ok( result )
-    }
-    fn visit_expression_stmt( &mut self, expression: &stmt::Expression ) -> Result<Eval,EvalError> {
-      self.interpret_expr( &expression.expression )
-    }
-    fn visit_function_stmt( &mut self, function: &stmt::Function ) -> Result<Eval, EvalError> {
-      let result = Eval::Fun( function.clone(), self.envs.clone() );
-      self.envs.view_mut().create_symbol( &function.name, &result );
-      Ok( result )
-    }
-    fn visit_if_stmt( &mut self, if_: &stmt::If ) -> Result<Eval, EvalError> {
-      if self.interpret_expr( &if_.condition )?.is_truthy() {
-        self.interpret_stmt( &if_.then_branch )
-      } else if if_.else_branch.is_some() {
-        self.interpret_stmt( if_.else_branch.as_ref().unwrap() )
-      } else {
-        Ok( Eval::Nil )
+  fn visit_block_stmt( &mut self, block: &stmt::Block ) -> Result<Eval, EvalError> {
+    self.envs = Env::new_with_enclosing( &self.envs );
+    let mut result = Eval::Nil;
+    for stmt in &block.statements {
+      match self.interpret_stmt( stmt ) {
+        Ok( res ) => {
+          result = res;
+        },
+        Err( e ) => {
+          self.envs = Env::drop_enclosed( &self.envs );
+          return Err( e );      
+        },
       }
     }
-    fn visit_print_stmt( &mut self, print: &stmt::Print ) -> Result<Eval, EvalError> {
-      let result = self.interpret_expr( &print.expression )?;
-      println!( "{}", result );
-      Ok( result )
+    self.envs = Env::drop_enclosed( &self.envs );
+    Ok( result )
+  }
+  fn visit_expression_stmt( &mut self, expression: &stmt::Expression ) -> Result<Eval,EvalError> {
+    self.interpret_expr( &expression.expression )
+  }
+  fn visit_function_stmt( &mut self, function: &stmt::Function ) -> Result<Eval, EvalError> {
+    let result = Eval::Fun( function.clone(), self.envs.clone() );
+    self.envs.view_mut().create_symbol( &function.name, &result );
+    Ok( result )
+  }
+  fn visit_if_stmt( &mut self, if_: &stmt::If ) -> Result<Eval, EvalError> {
+    if self.interpret_expr( &if_.condition )?.is_truthy() {
+      self.interpret_stmt( &if_.then_branch )
+    } else if if_.else_branch.is_some() {
+      self.interpret_stmt( if_.else_branch.as_ref().unwrap() )
+    } else {
+      Ok( Eval::Nil )
     }
-    fn visit_return_stmt( &mut self, return_: &stmt::Return ) -> Result<Eval, EvalError> {
-      if let Some( expr ) = &return_.value  {
-        Err( EvalError::Return( self.interpret_expr( &expr )? ) )
-      } else {
-        Err( EvalError::Return( Eval::Nil ) )
+  }
+  fn visit_print_stmt( &mut self, print: &stmt::Print ) -> Result<Eval, EvalError> {
+    let result = self.interpret_expr( &print.expression )?;
+    println!( "{}", result );
+    Ok( result )
+  }
+  fn visit_return_stmt( &mut self, return_: &stmt::Return ) -> Result<Eval, EvalError> {
+    if let Some( expr ) = &return_.value  {
+      Err( EvalError::Return( self.interpret_expr( &expr )? ) )
+    } else {
+      Err( EvalError::Return( Eval::Nil ) )
+    }
+  }
+  fn visit_var_stmt( &mut self, var: &stmt::Var ) -> Result<Eval, EvalError> {
+    let value = match var.init.as_ref() {
+      Some( expr ) => self.interpret_expr( expr )?,
+      None => Eval::Nil
+    };
+    self.envs.view_mut().create_symbol( &var.name, &value );
+    Ok( value )
+  }
+  fn visit_while_stmt( &mut self, while_: &stmt::While ) -> Result<Eval, EvalError> {
+    let mut result = Eval::Nil;
+    loop {
+      if !self.interpret_expr( &while_.condition )?.is_truthy() {
+        return Ok( result );
       }
+      result = self.interpret_stmt( &while_.body )?;
     }
-    fn visit_var_stmt( &mut self, var: &stmt::Var ) -> Result<Eval, EvalError> {
-      let value = match var.init.as_ref() {
-        Some( expr ) => self.interpret_expr( expr )?,
-        None => Eval::Nil
-      };
-      self.envs.view_mut().create_symbol( &var.name, &value );
-      Ok( value )
-    }
-    fn visit_while_stmt( &mut self, while_: &stmt::While ) -> Result<Eval, EvalError> {
-      let mut result = Eval::Nil;
-      loop {
-        if !self.interpret_expr( &while_.condition )?.is_truthy() {
-          return Ok( result );
-        }
-        result = self.interpret_stmt( &while_.body )?;
-      }
-    }
+  }
 }

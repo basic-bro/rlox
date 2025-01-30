@@ -11,8 +11,7 @@ mod interpreter;
 mod env;
 mod resolver;
 mod eval;
-
-
+mod byte_code;
 
 
 use eval::Eval;
@@ -20,6 +19,7 @@ use scanner::Scanner;
 use parser::Parser;
 use resolver::Resolver;
 use interpreter::Interpreter;
+use byte_code::{Compiler, Vm};
 // use crate::interpreter::Interpreter;
 
 // pub fn new() -> Interpreter {
@@ -93,9 +93,18 @@ fn run( src: String ) -> ( Eval, bool ) {
     return ( Eval::Nil, true );
   }
 
+  let mut codegen = Compiler::new();
+  let ( byte_code, had_codegen_error ) = codegen.compile( &stmts );
+  if had_codegen_error {
+    return ( Eval::Nil, true );
+  }
+
+  let mut vm = Vm::new( byte_code );
+  vm.exec()
+
   // interpreter
-  let mut interpreter = Interpreter::new();
-  interpreter.interpret( &stmts )
+  // let mut interpreter = Interpreter::new();
+  // interpreter.interpret( &stmts )
 
   
 

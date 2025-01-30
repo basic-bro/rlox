@@ -1,0 +1,91 @@
+fun say_hi( first, last )
+{
+  print "Hi " + first + " " + last + "!";
+  return 3;
+}
+
+fun count( n )
+{
+  if( n >= 100 )
+  {
+    var peacock = "a bird";
+    print "n should be less than 100" + peacock;
+    return;
+  }
+
+  while( n < 100 ) {
+    if( n == 3 ) {
+      return n;
+    }
+
+    print n;
+    n = n + "string";
+  }
+
+}
+
+fun fib( n ) {
+  if( n <= 1 ) {
+    return n;
+  }
+
+  return fib( n - 2 ) + fib( n - 1 );
+}
+
+
+say_hi( "Bobby", "Bunter" );
+
+fun uh_oh() {
+  print "Uh oh!";
+}
+
+for( var t = 0; t < 10; t = t + 1 ) {
+  uh_oh();
+  print fib( t );
+}
+
+{
+  var x = fib;
+  //print counter;
+
+  //print counter();
+
+  { 
+    {
+      var y = fib;
+      print x;
+      print y( 15 );
+    }
+
+    {
+      print x( 20 );
+      var z;
+      print z;
+      //print count( x );
+    }
+
+
+  }
+
+}
+
+fun make_counter() {
+  print "make_counter";
+  var i = 0;
+  
+  fun count() {
+    i = i + 1;
+    print i;
+  }
+  return count;
+}
+
+var counter = make_counter();
+counter();
+counter();
+
+
+count( 50 );
+
+
+
