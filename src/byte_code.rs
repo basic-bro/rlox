@@ -1,6 +1,6 @@
 use std::{any::Any, process::exit};
 
-use crate::{error::Error, eval::Eval, expr::{self}, stmt::{self, Stmt}, token::TokenType, util::{assert, Stack}};
+use crate::{error::Error, eval::Eval, expr::{self}, stmt::{self, Stmt}, token::TokenType, util::{assert, Cache, CacheKey, Stack}};
 
 #[derive(Debug, Clone)]
 enum Op {
@@ -11,10 +11,18 @@ enum Op {
   Neg,
   Pop,
   PushConstant( u8 ),
-  Dup( u8 ),
+  Load( u8 ),
+  Store( u8 ),
   Print,
   And,
   Or,
+  Not,
+  Gt,
+  Geq,
+  Lt,
+  Leq,
+  Eq,
+  Neq,
   Return,
   JumpIfFalse( i16 ),
   Jump( i16 ),
@@ -24,21 +32,24 @@ enum Op {
 pub struct ByteCode {
   code: Vec<Op>,
   constants: Vec<Value>,
+  string_cache: Cache<String>
 }
 
 pub struct Compiler {
   code: Vec<Op>,
   constants: Vec<Value>,
+  string_cache: Cache<String>,
   locals: Vec<String>,
   stack_size: usize,
   had_error: bool
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 enum Value {
   Number( f64 ),
   Boolean( bool ),
-  Nil
+  Nil,
+  String( CacheKey<String> )
 }
 
 pub struct Vm {
@@ -54,6 +65,7 @@ impl Value {
       Value::Number( _ ) => false,
       Value::Boolean( b ) => *b,
       Value::Nil => false,
+      Value::String( _ ) => false,
     }
   }
 }
@@ -99,6 +111,11 @@ impl Vm {
         match ( &left, &right ) {
           ( Value::Number( x ), Value::Number( y ) ) => {
             *self.stack.peek_mut( 0 ) = Value::Number( x + y );
+          },
+          ( Value::String( x ), Value::String( y ) ) => {
+            let s = self.bc.string_cache.get( x ).unwrap().to_owned()
+              + self.bc.string_cache.get( y ).unwrap();
+            *self.stack.peek_mut( 0 ) = Value::String( self.bc.string_cache.put( s ) );
           },
           _ => {
             eprintln!( "\nUnknown operation '+' on types {:?} and {:?}.", left, right );
@@ -167,15 +184,23 @@ impl Vm {
         let left = self.stack.peek( 0 ).clone();
         *self.stack.peek_mut( 0 ) = Value::Boolean( left.is_truthy() || right.is_truthy() );
       },
+      Op::Not => {
+        let value = self.stack.peek( 0 ).is_truthy();
+        *self.stack.peek_mut( 0 ) = Value::Boolean( !value );
+      },
       Op::Return => {
         stop = true;
       },
       Op::Pop => {
         self.stack.pop();
       },
-      Op::Dup( depth ) => {
+      Op::Load( depth ) => {
         let local = self.stack.peek( depth as usize );
         self.stack.push( local.clone() );
+      },
+      Op::Store( depth ) => {
+        let value = self.stack.peek( 0 );
+        *self.stack.peek_mut( depth as usize ) = value.clone();
       },
       Op::Print => {
         println!( "[Execution output: '{:?}']", self.stack.peek( 0 ) );
@@ -189,16 +214,79 @@ impl Vm {
       Op::Jump( delta ) => {
         ip_offset = delta;
       },
+      Op::Gt => {
+        let right = self.stack.pop();
+        let left = self.stack.peek( 0 ).clone();
+        match ( &left, &right ) {
+          ( Value::Number( x ), Value::Number( y ) ) => {
+            *self.stack.peek_mut( 0 ) = Value::Boolean( *x > *y );
+          },
+          _ => {
+            eprintln!( "\nUnknown operation '>' on types {:?} and {:?}.", left, right );
+            stop = true;
+          }
+        }
+      },
+      Op::Geq => {
+        let right = self.stack.pop();
+        let left = self.stack.peek( 0 ).clone();
+        match ( &left, &right ) {
+          ( Value::Number( x ), Value::Number( y ) ) => {
+            *self.stack.peek_mut( 0 ) = Value::Boolean( *x >= *y );
+          },
+          _ => {
+            eprintln!( "\nUnknown operation '>=' on types {:?} and {:?}.", left, right );
+            stop = true;
+          }
+        }
+      },
+      Op::Lt => {
+        let right = self.stack.pop();
+        let left = self.stack.peek( 0 ).clone();
+        match ( &left, &right ) {
+          ( Value::Number( x ), Value::Number( y ) ) => {
+            *self.stack.peek_mut( 0 ) = Value::Boolean( *x < *y );
+          },
+          _ => {
+            eprintln!( "\nUnknown operation '<' on types {:?} and {:?}.", left, right );
+            stop = true;
+          }
+        }
+      },
+      Op::Leq => {
+        let right = self.stack.pop();
+        let left = self.stack.peek( 0 ).clone();
+        match ( &left, &right ) {
+          ( Value::Number( x ), Value::Number( y ) ) => {
+            *self.stack.peek_mut( 0 ) = Value::Boolean( *x <= *y );
+          },
+          _ => {
+            eprintln!( "\nUnknown operation '<=' on types {:?} and {:?}.", left, right );
+            stop = true;
+          }
+        }
+      },
+      Op::Eq => {
+        let right = self.stack.pop();
+        let left = self.stack.peek( 0 ).clone();
+        *self.stack.peek_mut( 0 ) = Value::Boolean( left == right );
+      },
+      Op::Neq => {
+        let right = self.stack.pop();
+        let left = self.stack.peek( 0 ).clone();
+        *self.stack.peek_mut( 0 ) = Value::Boolean( left != right );
+      },
     }
     ( ip_offset, stop )
   }
 }
 
 impl ByteCode {
-  fn new( code: Vec<Op>, constants: Vec<Value> ) -> ByteCode {
+  fn new( code: Vec<Op>, constants: Vec<Value>, string_cache: Cache<String> ) -> ByteCode {
     ByteCode {
       code,
-      constants
+      constants,
+      string_cache
     }
   }
 }
@@ -207,7 +295,8 @@ impl Compiler {
   pub fn new() -> Compiler {
     Compiler {
       code: Vec::new(),
-      constants: vec![ Value::Number( 0.0 ) ],
+      constants: vec![ Value::Nil, Value::Boolean( true ), Value::Boolean( false ) ],
+      string_cache: Cache::<String>::new(),
       locals: Vec::new(),
       stack_size: 0,
       had_error: false
@@ -219,8 +308,12 @@ impl Compiler {
     self.had_error = false;
   }
   fn add_constant( &mut self, constant: Value ) -> u8 {
+    if let Some( idx ) = self.constants.iter().position( |x| *x == constant ) {
+      idx as u8
+    } else {
     self.constants.push( constant );
     ( self.constants.len() - 1 ) as u8
+    }
   }
   fn emit_op( &mut self, op: Op ) -> usize {
     match op {
@@ -231,14 +324,22 @@ impl Compiler {
       Op::Neg => {},
       Op::Pop => { self.stack_size -= 1 },
       Op::PushConstant( _ ) => { self.stack_size += 1 },
-      Op::Dup( _ ) => { self.stack_size += 1 },
+      Op::Load( _ ) => { self.stack_size += 1 },
+      Op::Store( _ ) => {},
       Op::Print => {},
       Op::And => { self.stack_size -= 1 },
       Op::Or => { self.stack_size -= 1 },
+      Op::Not => {},
       Op::Return => {},
       Op::Nop => {},
       Op::JumpIfFalse( _ ) => {},
       Op::Jump( _ ) => {},
+      Op::Gt => { self.stack_size -= 1 },
+      Op::Geq => { self.stack_size -= 1 },
+      Op::Lt => { self.stack_size -= 1 },
+      Op::Leq => { self.stack_size -= 1 },
+      Op::Eq => { self.stack_size -= 1 },
+      Op::Neq => { self.stack_size -= 1 },
     }
     self.code.push( op );
     self.code.len() - 1
@@ -263,7 +364,7 @@ impl Compiler {
     self.emit_op( Op::Return );
     // self.debug_print();
     // exit( 0 );
-    ( ByteCode::new( self.code.clone(), self.constants.clone() ), self.had_error )
+    ( ByteCode::new( self.code.clone(), self.constants.clone(), self.string_cache.clone() ), self.had_error )
   }
   fn debug_print( &self ) {
     println!( "Code:" );
@@ -283,7 +384,18 @@ impl Compiler {
 
 impl expr::Visitor<Result<(), Error>> for Compiler {
   fn visit_assign_expr( &mut self, assign: &expr::Assign ) -> Result<(), Error> {
-    todo!()
+    self.compile_expr( &assign.rhs )?;
+    let mut peek_depth: Option<u8> = None;
+    for ( slot, name ) in self.locals.iter().enumerate().rev() {
+      if *name == assign.lhs.name.lexeme {
+        // println!( "\nname = '{}', stack_size = {} slot = {}", name, self.stack_size, slot );
+        peek_depth = Some( ( self.stack_size - slot - 1 ) as u8 );
+        break;
+      }
+    }
+    assert( peek_depth.is_some(), format!( "Could not find local variable '{}'", assign.lhs.name.lexeme ) );
+    self.emit_op( Op::Store( peek_depth.unwrap() ) );
+    Ok( () )
   }
 
   fn visit_binary_expr( &mut self, binary: &expr::Binary ) -> Result<(), Error> {
@@ -296,8 +408,13 @@ impl expr::Visitor<Result<(), Error>> for Compiler {
       TokenType::Star  => { self.emit_op( Op::Mul ); },
       TokenType::And   => { self.emit_op( Op::And ); },
       TokenType::Or    => { self.emit_op( Op::Or  ); },
-      
-      _ => {}
+      TokenType::Greater => { self.emit_op( Op::Gt ); },
+      TokenType::GreaterEqual => { self.emit_op( Op::Geq ); },
+      TokenType::Less => { self.emit_op( Op::Lt ); },
+      TokenType::LessEqual => { self.emit_op( Op::Leq ); },
+      TokenType::EqualEqual => { self.emit_op( Op::Eq ); },
+      TokenType::BangEqual => { self.emit_op( Op::Neq ); },
+      _ => todo!()
     }
     Ok( () )
   }
@@ -311,38 +428,51 @@ impl expr::Visitor<Result<(), Error>> for Compiler {
   }
 
   fn visit_literal_expr( &mut self, literal: &expr::Literal ) -> Result<(), Error> {
-    if let TokenType::Number = literal.value.token_type {
-      let idx = self.add_constant( Value::Number( literal.value.lexeme.parse::<f64>().unwrap() ) );
-      self.emit_op( Op::PushConstant( idx ) );
-      Ok( () )
-    } else {
-      Err( Error::from_token( &literal.value, "Only doing numbers presently.".into() ) )
-    }
+    let value = match literal.value.token_type {
+        TokenType::String => {
+          Value::String( self.string_cache.put( literal.value.lexeme.clone() ) )
+        },
+        TokenType::Number => {
+          Value::Number( literal.value.lexeme.parse::<f64>().unwrap() )
+        },
+        TokenType::Nil => {
+          Value::Nil
+        },
+        TokenType::True => {
+          Value::Boolean( true )
+        },
+        TokenType::False => {
+          Value::Boolean( false )
+        },
+        _ => unreachable!()
+    };
+    let idx = self.add_constant( value );
+    self.emit_op( Op::PushConstant( idx ) );
+    Ok( () )
   }
 
   fn visit_unary_expr( &mut self, unary: &expr::Unary ) -> Result<(), Error> {
     self.compile_expr( &unary.right )?;
     if let TokenType::Minus = unary.operator.token_type {
       self.emit_op( Op::Neg );
-      Ok( () )
     }
-    else {
-      Err( Error::from_token( &unary.operator,
-        "Only doing unary minus on constants presently".into() ) )
+    else if let TokenType::Bang = unary.operator.token_type {
+      self.emit_op( Op::Not );
     }
+    Ok( () )
   }
 
   fn visit_variable_expr( &mut self, variable: &expr::Variable ) -> Result<(), Error> {
     let mut peek_depth: Option<u8> = None;
     for ( slot, name ) in self.locals.iter().enumerate().rev() {
       if *name == variable.name.lexeme {
-        println!( "\nname = '{}', stack_size = {} slot = {}", name, self.stack_size, slot );
+        // println!( "\nname = '{}', stack_size = {} slot = {}", name, self.stack_size, slot );
         peek_depth = Some( ( self.stack_size - slot - 1 ) as u8 );
         break;
       }
     }
     assert( peek_depth.is_some(), format!( "Could not find local variable '{}'", variable.name.lexeme ) );
-    self.emit_op( Op::Dup( peek_depth.unwrap() ) );
+    self.emit_op( Op::Load( peek_depth.unwrap() ) );
     Ok( () )
   }
 }
@@ -397,6 +527,7 @@ impl stmt::Visitor<Result<(), Error>> for Compiler {
     // #else#
     // pop, [ ... byte-code for the else clause ... ]
     let __else__ = self.emit_op( Op::Pop );
+
     self.stack_size = stack_size;  // restore stack to before the if-condition
     if let Some( stmt ) = &if_.else_branch {
       self.compile_stmt( stmt )?;
@@ -412,7 +543,7 @@ impl stmt::Visitor<Result<(), Error>> for Compiler {
     // stitch up __jump_to_done__
     *self.code.get_mut( __jump_to_done__ ).unwrap()
       = Op::Jump( ( __done__ - __jump_to_done__ ) as i16 );
-    
+   
     Ok( () )
   }
 
@@ -438,6 +569,37 @@ impl stmt::Visitor<Result<(), Error>> for Compiler {
   }
 
   fn visit_while_stmt( &mut self, while_: &stmt::While ) -> Result<(), Error> {
-    todo!()
+    // #begin#
+    let __begin__ = self.code.len() as isize;
+
+    // [ ... byte-code for the condition ... ]
+    self.compile_expr( &while_.condition )?;
+
+    // jump if false to #end#
+    let __jump_to_end__ = self.emit_op( Op::Nop ) as isize;
+
+    // pop, [ ... byte-code for the body ... ]
+    self.emit_op( Op::Pop );
+    self.compile_stmt( &while_.body )?;
+
+    // jump to #begin#
+    let __jump_to_begin__ = self.emit_op( Op::Nop ) as isize;
+
+    // #end#
+    // pop
+    let __end__ = self.emit_op( Op::Pop ) as isize;
+
+    // might need to adjust self.stack_height
+    self.stack_size += 1;
+
+    // stitch up __jump_to_end__
+    *self.code.get_mut( __jump_to_end__ as usize ).unwrap()
+      = Op::JumpIfFalse( ( __end__ - __jump_to_end__ ) as i16 );
+
+    // stitch up __jump_to_begin__
+    *self.code.get_mut( __jump_to_begin__ as usize ).unwrap()
+      = Op::Jump( ( __begin__ - __jump_to_begin__ ) as i16 );
+
+    Ok( () )
   }
 }

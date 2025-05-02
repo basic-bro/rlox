@@ -7,7 +7,7 @@
 // use //
 /////////
 
-use std::{cell::{Ref, RefCell, RefMut}, collections::HashMap, hash::{DefaultHasher, Hash, Hasher}, rc::Rc};
+use std::{cell::{Ref, RefCell, RefMut}, collections::HashMap, hash::{DefaultHasher, Hash, Hasher}, marker::PhantomData, rc::Rc};
 
 
 ///////////////////
@@ -64,6 +64,59 @@ fn default_hash( s: &str ) -> u64 {
   let mut hasher = DefaultHasher::new();
   s.hash( &mut hasher );
   hasher.finish()
+}
+
+
+#[derive(Debug, Hash)]
+pub struct CacheKey<T: Hash> {
+  key: u64,
+  phantom: PhantomData<T>
+}
+
+impl<T: Hash> CacheKey<T> {
+  fn new( t: &T ) -> CacheKey<T> {
+    let mut hasher = DefaultHasher::new();
+    t.hash( &mut hasher );
+    CacheKey::<T> {
+      key: hasher.finish(),
+      phantom: PhantomData
+    }
+  }
+}
+
+impl<T: Hash> PartialEq for CacheKey<T> {
+  fn eq(&self, other: &Self) -> bool {
+    self.key == other.key
+  }
+}
+
+impl<T: Hash> Eq for CacheKey<T> { }
+
+impl<T: Hash> Clone for CacheKey<T> {
+  fn clone(&self) -> Self {
+    Self { key: self.key.clone(), phantom: self.phantom.clone() }
+  }
+}
+
+#[derive(Clone)]
+pub struct Cache<T: Hash> {
+  db: HashMap<CacheKey<T>, T>
+}
+
+impl<T: Hash> Cache<T> {
+  pub fn new() -> Cache<T> {
+    Cache {
+      db: HashMap::new()
+    }
+  }
+  pub fn put( &mut self, t: T ) -> CacheKey<T> {
+    let key = CacheKey::<T>::new( &t );
+    self.db.insert( key.clone(), t );
+    key
+  }
+  pub fn get( &self, key: &CacheKey<T> ) -> Option<&T> {
+    self.db.get( key )
+  }
 }
 
 
